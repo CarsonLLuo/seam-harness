@@ -1,0 +1,6 @@
+# 设计文档只保留在本地
+docs/
+
+.DS_Store
+node_modules/
+.env*
