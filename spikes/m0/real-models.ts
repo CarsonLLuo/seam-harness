@@ -1,7 +1,8 @@
 // M0 验证原型：用真实模型跑一次带工具调用的任务，Anthropic 和 DeepSeek 各一次。
 // API Key 从环境变量读取（Bun 会自动加载项目根目录的 .env）：
-//   ANTHROPIC_API_KEY=...
+//   ANTHROPIC_API_KEY=...（没有时退而使用 ANTHROPIC_AUTH_TOKEN）
 //   DEEPSEEK_API_KEY=...
+// 使用中转站时，再设置 ANTHROPIC_BASE_URL / DEEPSEEK_BASE_URL。
 // 缺哪个 Key 就跳过哪家。运行：bun spikes/m0/real-models.ts
 import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import { createModels, Type } from "@earendil-works/pi-ai";
@@ -12,8 +13,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const targets = [
-  { provider: "anthropic", modelId: "claude-haiku-5-5", key: process.env.ANTHROPIC_API_KEY },
-  { provider: "deepseek", modelId: "deepseek-v4-pro", key: process.env.DEEPSEEK_API_KEY },
+  {
+    provider: "anthropic",
+    modelId: "claude-haiku-5-5",
+    key: process.env.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_AUTH_TOKEN,
+    baseUrl: process.env.ANTHROPIC_BASE_URL,
+  },
+  {
+    provider: "deepseek",
+    modelId: "deepseek-v4-pro",
+    key: process.env.DEEPSEEK_API_KEY,
+    baseUrl: process.env.DEEPSEEK_BASE_URL,
+  },
 ];
 
 const models = createModels();
@@ -59,8 +70,9 @@ for (const t of targets) {
     console.log(`SKIP  ${t.provider}：没有设置 API Key`);
     continue;
   }
-  const model = models.getModel(t.provider, t.modelId);
-  if (!model) throw new Error(`model not found: ${t.provider}/${t.modelId}`);
+  const found = models.getModel(t.provider, t.modelId);
+  if (!found) throw new Error(`model not found: ${t.provider}/${t.modelId}`);
+  const model = t.baseUrl ? { ...found, baseUrl: t.baseUrl } : found;
 
   let llmCalls = 0;
   const toolCalls: { name: string; intent?: string }[] = [];
@@ -93,9 +105,10 @@ for (const t of targets) {
     const answer = last?.content?.find((c: any) => c.type === "text")?.text ?? "";
     const ok = toolCalls.length > 0 && answer.includes("b.txt") && toolCalls.every((c) => c.intent);
     failed ||= !ok;
-    console.log(`${ok ? "PASS" : "FAIL"}  ${t.provider}/${t.modelId}：${llmCalls} 次模型请求，${toolCalls.length} 次工具调用`);
+    console.log(`${ok ? "PASS" : "FAIL"}  ${t.provider}/${t.modelId} @ ${new URL(model.baseUrl).host}：${llmCalls} 次模型请求，${toolCalls.length} 次工具调用`);
     for (const c of toolCalls) console.log(`        ${c.name}  intent: ${c.intent ?? "（缺失）"}`);
     console.log(`        回答：${answer.trim().slice(0, 200)}`);
+    if (last?.errorMessage) console.log(`        错误（${last.stopReason}）：${String(last.errorMessage).slice(0, 300)}`);
   } catch (err) {
     failed = true;
     console.log(`FAIL  ${t.provider}/${t.modelId}：${(err as Error).message}`);
