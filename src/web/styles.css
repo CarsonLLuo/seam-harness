@@ -131,6 +131,9 @@
   --shadow-sm: var(--base-shadow-sm);
   --shadow-md: var(--base-shadow-md);
   --shadow-lg: var(--base-shadow-lg);
+
+  /* 统一的动效缓动：短、无回弹，只用来交代“内容从哪来” */
+  --ease-smooth: cubic-bezier(0.2, 0, 0, 1);
 }
 
 @layer base {
@@ -164,4 +167,20 @@ body {
 }
 .scrollbar-none::-webkit-scrollbar {
   display: none;
+}
+
+/* 系统开启“减少动态效果”时关掉所有过渡和入场动画，只保留加载中的 spinner */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .animate-spin {
+    animation-duration: 1s !important;
+    animation-iteration-count: infinite !important;
+  }
 }

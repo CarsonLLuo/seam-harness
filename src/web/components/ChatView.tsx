@@ -1,5 +1,5 @@
 import { History, Lightbulb, PanelRight } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { SeamEvent } from "../../events";
 import { reconstruct } from "../../replay";
 import { sendMessage, startTask, stopSession, subscribe, type Config } from "../api";
@@ -32,7 +32,7 @@ export function NewChat({ config, onCreated, ...view }: ViewProps & { config: Co
   const [tipIndex] = useState(() => Math.floor(Math.random() * t.tips.length));
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col">
+    <div className="flex min-w-0 flex-1 flex-col animate-in fade-in duration-150 ease-smooth">
       <Header title={t.newSession} {...view} />
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6">
         <div className="w-full max-w-2xl">
@@ -111,14 +111,23 @@ export function SessionChat({ sessionId, onActivity, ...view }: ViewProps & { se
   const [running, setRunning] = useState(false);
   const [replayStep, setReplayStep] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // 服务端补发完历史事件后才会发第一条 status；在此之前收到的回合都算历史，不播入场动画
+  const [animateFrom, setAnimateFrom] = useState<number | null>(null);
+  const lastSeq = useRef(0);
+  const turnCount = useRef(0);
 
   useEffect(
     () =>
       subscribe(sessionId, (m) => {
-        // 重连时服务端会从头补发事件，按序号去重
-        if (m.kind === "event") setEvents((prev) => (m.event.seq <= (prev.at(-1)?.seq ?? 0) ? prev : [...prev, m.event]));
-        else if (m.kind === "delta") setDeltas((prev) => ({ ...prev, [m.turn]: (prev[m.turn] ?? "") + m.text }));
+        if (m.kind === "event") {
+          // 重连时服务端会从头补发事件，按序号去重
+          if (m.event.seq <= lastSeq.current) return;
+          lastSeq.current = m.event.seq;
+          if (m.event.type === "turn_start") turnCount.current += 1;
+          setEvents((prev) => [...prev, m.event]);
+        } else if (m.kind === "delta") setDeltas((prev) => ({ ...prev, [m.turn]: (prev[m.turn] ?? "") + m.text }));
         else {
+          setAnimateFrom((v) => v ?? turnCount.current);
           setRunning(m.running);
           onActivity();
         }
@@ -142,7 +151,7 @@ export function SessionChat({ sessionId, onActivity, ...view }: ViewProps & { se
   const toggleReplay = () => setReplayStep(replaying ? null : 0);
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col">
+    <div className="flex min-w-0 flex-1 flex-col animate-in fade-in duration-150 ease-smooth">
       <Header
         title={start.task}
         meta={
@@ -166,8 +175,14 @@ export function SessionChat({ sessionId, onActivity, ...view }: ViewProps & { se
 
       <Conversation className="min-h-0 flex-1">
         <ConversationContent className="mx-auto w-full max-w-3xl gap-6 px-6 pt-6 pb-10">
-          {session.turns.map((turn) => (
-            <Turn key={turn.turn} turn={turn} streaming={replaying || turn.assistant ? undefined : deltas[turn.turn]} onRaw={view.onRaw} />
+          {session.turns.map((turn, index) => (
+            <Turn
+              key={turn.turn}
+              turn={turn}
+              animate={!replaying && animateFrom !== null && index >= animateFrom}
+              streaming={replaying || turn.assistant ? undefined : deltas[turn.turn]}
+              onRaw={view.onRaw}
+            />
           ))}
         </ConversationContent>
         <ConversationScrollButton />

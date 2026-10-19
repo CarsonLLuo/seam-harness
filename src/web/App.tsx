@@ -119,7 +119,7 @@ export function App() {
             )
           )}
         </main>
-        {rawOpen && <RawPanel value={raw} onClose={() => setRawOpen(false)} />}
+        <RawPanel value={raw} open={rawOpen} onClose={() => setRawOpen(false)} />
       </div>
     </TooltipProvider>
   );

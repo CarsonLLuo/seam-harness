@@ -53,22 +53,20 @@ export function Composer(props: {
       />
       <div className="mt-1 flex items-center gap-2">
         <div className="flex min-w-0 flex-1 items-center gap-1.5">{props.toolbar}</div>
-        {props.running ? (
-          <Button size="icon" variant="secondary" className="h-8 w-8 rounded-full" onClick={props.onStop} aria-label={t.stop} title={t.stop}>
-            <Square className="!size-3.5 fill-current" />
-          </Button>
-        ) : (
-          <Button
-            size="icon"
-            className="h-8 w-8 rounded-full"
-            onClick={() => void submit()}
-            disabled={!canSend}
-            aria-label={t.send}
-            title={t.send}
-          >
-            <ArrowUp />
-          </Button>
-        )}
+        <Button
+          size="icon"
+          variant={props.running ? "secondary" : "default"}
+          className="h-8 w-8 rounded-full"
+          onClick={props.running ? props.onStop : () => void submit()}
+          disabled={!props.running && !canSend}
+          aria-label={props.running ? t.stop : t.send}
+          title={props.running ? t.stop : t.send}
+        >
+          {/* 发送和停止共用一个按钮，图标交叉淡入，颜色跟着 variant 过渡 */}
+          <span key={props.running ? "stop" : "send"} className="animate-in fade-in zoom-in-95 duration-150 ease-smooth">
+            {props.running ? <Square className="!size-3.5 fill-current" /> : <ArrowUp />}
+          </span>
+        </Button>
       </div>
     </div>
   );

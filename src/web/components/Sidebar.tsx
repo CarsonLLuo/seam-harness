@@ -80,10 +80,35 @@ export function Sidebar(props: {
   const { t, lang, toggle } = useI18n();
   const shortcut = navigator.platform.toLowerCase().includes("mac") ? "⌘B" : "Ctrl+B";
 
-  // 收起后只留一条窄栏：展开、新会话，底部是主题和语言
-  if (props.collapsed) {
-    return (
-      <aside className="flex w-14 shrink-0 flex-col items-center gap-1 border-r border-border/70 bg-sidebar-surface py-2">
+  const time = new Intl.DateTimeFormat(lang === "zh" ? "zh-CN" : "en", { hour: "2-digit", minute: "2-digit" });
+  const date = new Intl.DateTimeFormat(lang === "zh" ? "zh-CN" : "en", { month: "short", day: "numeric" });
+
+  const groups: Group[] = ["today", "yesterday", "week", "older"];
+  const byGroup = new Map<Group, SessionSummary[]>();
+  for (const s of props.sessions) {
+    const g = groupOf(s.startedAt);
+    byGroup.set(g, [...(byGroup.get(g) ?? []), s]);
+  }
+
+  const collapsed = props.collapsed;
+
+  // 收起和展开共用同一个 aside 做宽度过渡，两套内容交叉淡入。
+  // 隐藏的一套设为 inert，避免 Tab 键把焦点移到看不见的按钮上。
+  return (
+    <aside
+      className={cn(
+        "relative flex shrink-0 flex-col overflow-hidden border-r border-border/70 bg-sidebar-surface transition-[width] duration-200 ease-smooth",
+        collapsed ? "w-14" : "w-64",
+      )}
+    >
+      <div
+        inert={!collapsed}
+        aria-hidden={!collapsed}
+        className={cn(
+          "absolute inset-y-0 left-0 flex w-14 flex-col items-center gap-1 py-2 transition-opacity duration-100 ease-smooth",
+          collapsed ? "opacity-100 delay-100" : "pointer-events-none opacity-0",
+        )}
+      >
         <IconButton label={`${t.expandSidebar} (${shortcut})`} onClick={props.onToggleCollapsed}>
           <PanelLeftOpen />
         </IconButton>
@@ -96,75 +121,70 @@ export function Sidebar(props: {
             <Languages />
           </IconButton>
         </div>
-      </aside>
-    );
-  }
-
-  const time = new Intl.DateTimeFormat(lang === "zh" ? "zh-CN" : "en", { hour: "2-digit", minute: "2-digit" });
-  const date = new Intl.DateTimeFormat(lang === "zh" ? "zh-CN" : "en", { month: "short", day: "numeric" });
-
-  const groups: Group[] = ["today", "yesterday", "week", "older"];
-  const byGroup = new Map<Group, SessionSummary[]>();
-  for (const s of props.sessions) {
-    const g = groupOf(s.startedAt);
-    byGroup.set(g, [...(byGroup.get(g) ?? []), s]);
-  }
-
-  return (
-    <aside className="flex w-64 shrink-0 flex-col border-r border-border/70 bg-sidebar-surface">
-      <div className="flex h-12 items-center gap-1 pr-2 pl-4">
-        <span className="flex-1 text-[15px] font-semibold tracking-tight">{t.appName}</span>
-        <IconButton label={`${t.collapseSidebar} (${shortcut})`} onClick={props.onToggleCollapsed}>
-          <PanelLeftClose />
-        </IconButton>
-        <IconButton label={t.newSession} onClick={props.onNew}>
-          <SquarePen />
-        </IconButton>
       </div>
 
-      <ScrollArea className="min-h-0 flex-1">
-        <nav className="px-2 pb-3">
-          {props.sessions.length === 0 && <p className="px-2 py-2 text-sm text-muted-foreground">{t.noSessions}</p>}
-          {groups.map((g) => {
-            const items = byGroup.get(g);
-            if (!items) return null;
-            return (
-              <div key={g} className="mt-3 first:mt-1">
-                <div className="px-2 pb-1 text-xs font-medium text-muted-foreground">{t.groups[g]}</div>
-                {items.map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => props.onSelect(s.id)}
-                    className={cn(
-                      "block w-full rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent/70",
-                      props.selected === s.id && "bg-accent",
-                    )}
-                  >
-                    <div className="truncate text-sm">{s.task}</div>
-                    <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-                      <StatusBadge status={s.status} />
-                      <span className="truncate tabular-nums">
-                        {g === "today" || g === "yesterday" ? time.format(s.startedAt) : date.format(s.startedAt)}
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            );
-          })}
-        </nav>
-      </ScrollArea>
+      <div
+        inert={collapsed}
+        aria-hidden={collapsed}
+        className={cn(
+          "flex h-full w-64 flex-col transition-opacity duration-100 ease-smooth",
+          collapsed ? "pointer-events-none opacity-0" : "opacity-100 delay-100",
+        )}
+      >
+        <div className="flex h-12 items-center gap-1 pr-2 pl-4">
+          <span className="flex-1 text-[15px] font-semibold tracking-tight">{t.appName}</span>
+          <IconButton label={`${t.collapseSidebar} (${shortcut})`} onClick={props.onToggleCollapsed}>
+            <PanelLeftClose />
+          </IconButton>
+          <IconButton label={t.newSession} onClick={props.onNew}>
+            <SquarePen />
+          </IconButton>
+        </div>
 
-      <div className="flex items-center gap-1 border-t border-border/70 px-2 py-2">
-        <button
-          onClick={toggle}
-          title={t.languageHint}
-          className="flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground"
-        >
-          <Languages className="h-4 w-4" />
-          {t.language}
-        </button>
-        <ThemeMenu value={props.theme} onChange={props.onThemeChange} />
+        <ScrollArea className="min-h-0 flex-1">
+          <nav className="px-2 pb-3">
+            {props.sessions.length === 0 && <p className="px-2 py-2 text-sm text-muted-foreground">{t.noSessions}</p>}
+            {groups.map((g) => {
+              const items = byGroup.get(g);
+              if (!items) return null;
+              return (
+                <div key={g} className="mt-3 first:mt-1">
+                  <div className="px-2 pb-1 text-xs font-medium text-muted-foreground">{t.groups[g]}</div>
+                  {items.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => props.onSelect(s.id)}
+                      className={cn(
+                        "block w-full rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent/70",
+                        props.selected === s.id && "bg-accent",
+                      )}
+                    >
+                      <div className="truncate text-sm">{s.task}</div>
+                      <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+                        <StatusBadge status={s.status} />
+                        <span className="truncate tabular-nums">
+                          {g === "today" || g === "yesterday" ? time.format(s.startedAt) : date.format(s.startedAt)}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              );
+            })}
+          </nav>
+        </ScrollArea>
+
+        <div className="flex items-center gap-1 border-t border-border/70 px-2 py-2">
+          <button
+            onClick={toggle}
+            title={t.languageHint}
+            className="flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground"
+          >
+            <Languages className="h-4 w-4" />
+            {t.language}
+          </button>
+          <ThemeMenu value={props.theme} onChange={props.onThemeChange} />
+        </div>
       </div>
     </aside>
   );

@@ -42,7 +42,18 @@ export function MarkdownText({ text }: { text: string }) {
   );
 }
 
-export function Turn({ turn, streaming, onRaw }: { turn: ReplayTurn; streaming?: string; onRaw: Raw }) {
+export function Turn({
+  turn,
+  streaming,
+  animate,
+  onRaw,
+}: {
+  turn: ReplayTurn;
+  streaming?: string;
+  /** 只在运行过程中新出现的回合入场时播放动画，打开历史会话时不重播 */
+  animate?: boolean;
+  onRaw: Raw;
+}) {
   const { t } = useI18n();
   const request = turn.requests.at(-1);
   const body = request?.body as { messages?: unknown[]; tools?: unknown[] } | undefined;
@@ -54,7 +65,7 @@ export function Turn({ turn, streaming, onRaw }: { turn: ReplayTurn; streaming?:
   const userText = turn.user ? (typeof turn.user.content === "string" ? turn.user.content : textOf(turn.user.content as unknown[])) : "";
 
   return (
-    <div className="space-y-3">
+    <div className={cn("space-y-3", animate && "animate-in fade-in slide-in-from-bottom-1 duration-150 ease-smooth")}>
       {userText && <UserMessage text={userText} />}
 
       <div className="group/turn">
@@ -85,7 +96,7 @@ export function Turn({ turn, streaming, onRaw }: { turn: ReplayTurn; streaming?:
         {turn.toolCalls.length > 0 && (
           <div className={cn("space-y-1.5", text && "mt-3")}>
             {turn.toolCalls.map((c) => (
-              <ToolCallRow key={c.call.toolCallId} call={c} onRaw={onRaw} />
+              <ToolCallRow key={c.call.toolCallId} call={c} animate={animate} onRaw={onRaw} />
             ))}
           </div>
         )}
@@ -101,7 +112,7 @@ export function Turn({ turn, streaming, onRaw }: { turn: ReplayTurn; streaming?:
   );
 }
 
-function ToolCallRow({ call, onRaw }: { call: ReplayToolCall; onRaw: Raw }) {
+function ToolCallRow({ call, animate, onRaw }: { call: ReplayToolCall; animate?: boolean; onRaw: Raw }) {
   const { t } = useI18n();
   const { name, args } = call.call;
   const Icon = TOOL_ICONS[name] ?? Wrench;
@@ -121,7 +132,12 @@ function ToolCallRow({ call, onRaw }: { call: ReplayToolCall; onRaw: Raw }) {
         : t.permission.allowUser;
 
   return (
-    <Collapsible className="rounded-lg border border-border/60 bg-card/60">
+    <Collapsible
+      className={cn(
+        "rounded-lg border border-border/60 bg-card/60",
+        animate && "animate-in fade-in duration-150 ease-smooth",
+      )}
+    >
       <CollapsibleTrigger className="group/row flex w-full items-center gap-2 px-3 py-2 text-left text-sm">
         <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]/row:rotate-90" />
         <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -142,23 +158,28 @@ function ToolCallRow({ call, onRaw }: { call: ReplayToolCall; onRaw: Raw }) {
         <span className="italic">{typeof args.intent === "string" ? args.intent : t.intentMissing}</span>
       </div>
 
-      {/* harness 记录的事实：展开后可见 */}
-      <CollapsibleContent className="border-t border-border/60 px-3 py-2 text-sm" title={t.source.harness}>
-        <div className={cn(denied ? "text-destructive" : "text-fact")}>
-          {permissionLabel}
-          {permission?.reason && <span className="text-muted-foreground"> — {permission.reason}</span>}
-        </div>
-        {result && !(denied && resultText === permission?.reason) && (
-          <div className="mt-2">
-            <div className={cn("mb-1 text-xs font-medium", result.isError ? "text-destructive" : "text-muted-foreground")}>
-              {result.isError ? t.resultError : t.result}
-            </div>
-            <pre className="max-h-64 overflow-auto rounded-md bg-muted/60 p-2 font-mono text-xs leading-relaxed whitespace-pre-wrap">{resultText}</pre>
+      {/* harness 记录的事实：展开后可见。高度动画放在外层，内边距放在内层，收起时高度才能真正归零 */}
+      <CollapsibleContent
+        className="overflow-hidden border-t border-border/60 data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down duration-200 ease-smooth"
+        title={t.source.harness}
+      >
+        <div className="px-3 py-2 text-sm">
+          <div className={cn(denied ? "text-destructive" : "text-fact")}>
+            {permissionLabel}
+            {permission?.reason && <span className="text-muted-foreground"> — {permission.reason}</span>}
           </div>
-        )}
-        <button onClick={() => onRaw(call)} className="mt-2 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
-          {t.viewRaw}
-        </button>
+          {result && !(denied && resultText === permission?.reason) && (
+            <div className="mt-2">
+              <div className={cn("mb-1 text-xs font-medium", result.isError ? "text-destructive" : "text-muted-foreground")}>
+                {result.isError ? t.resultError : t.result}
+              </div>
+              <pre className="max-h-64 overflow-auto rounded-md bg-muted/60 p-2 font-mono text-xs leading-relaxed whitespace-pre-wrap">{resultText}</pre>
+            </div>
+          )}
+          <button onClick={() => onRaw(call)} className="mt-2 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+            {t.viewRaw}
+          </button>
+        </div>
       </CollapsibleContent>
     </Collapsible>
   );
