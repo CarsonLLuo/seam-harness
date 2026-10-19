@@ -90,7 +90,7 @@ export function NewChat({ config, onCreated, ...view }: ViewProps & { config: Co
                 <button
                   key={example}
                   onClick={() => setDraft(example)}
-                  className="rounded-xl border border-border/70 bg-card/60 px-3 py-2.5 text-left text-[13px] leading-snug text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+                  className="rounded-xl border border-border bg-card px-3 py-2.5 text-left text-[13px] leading-snug text-muted-foreground shadow-xs transition-colors hover:bg-accent/60 hover:text-foreground"
                 >
                   {example}
                 </button>

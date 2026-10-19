@@ -8,7 +8,7 @@ export function ReplayBar({ steps, step, onStep }: { steps: number; step: number
   const { t } = useI18n();
   const go = (s: number) => onStep(Math.max(0, Math.min(steps - 1, s)));
   return (
-    <div className="flex items-center gap-1 rounded-2xl border border-border/80 bg-input-surface px-2 py-1.5 shadow-sm">
+    <div className="flex items-center gap-1 rounded-2xl border border-border bg-input-surface px-2 py-1.5 shadow-sm">
       <IconButton label={t.replay.first} onClick={() => go(0)} disabled={step === 0}>
         <SkipBack />
       </IconButton>

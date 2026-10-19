@@ -14,16 +14,16 @@
 :root {
   --background: 0 0% 100%;
   --foreground: 0 0% 3.9%;
-  --muted: 0 0% 96.1%;
-  --muted-foreground: 0 0% 45.1%;
-  --border: 0 0% 89.8%;
-  --input: 0 0% 89.8%;
+  --muted: 45 12% 95.5%;
+  --muted-foreground: 45 6% 42%;
+  --border: 45 8% 86%;
+  --input: 45 8% 86%;
   --ring: 0 0% 3.9%;
   --primary: 0 0% 9%;
   --primary-foreground: 0 0% 98%;
-  --secondary: 0 0% 96.1%;
+  --secondary: 45 12% 95.5%;
   --secondary-foreground: 0 0% 9%;
-  --accent: 0 0% 96.1%;
+  --accent: 45 12% 93.5%;
   --accent-foreground: 0 0% 9%;
   --destructive: 0 84.2% 60.2%;
   --destructive-foreground: 0 0% 98%;
@@ -32,8 +32,8 @@
   --popover: 0 0% 100%;
   --popover-foreground: 0 0% 3.9%;
   --content-area: 0 0% 100%;
-  --sidebar-surface: 60 14.3% 98.6%;
-  --input-surface: 60 14.3% 98.6%;
+  --sidebar-surface: 45 14% 96.8%;
+  --input-surface: 45 14% 97.4%;
   --tooltip: 0 0% 15%;
   --tooltip-foreground: 0 0% 98%;
   --tooltip-muted: 0 0% 75%;

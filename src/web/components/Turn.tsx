@@ -134,7 +134,7 @@ function ToolCallRow({ call, animate, onRaw }: { call: ReplayToolCall; animate?:
   return (
     <Collapsible
       className={cn(
-        "rounded-lg border border-border/60 bg-card/60",
+        "rounded-lg border border-border/80 bg-card shadow-xs",
         animate && "animate-in fade-in duration-150 ease-smooth",
       )}
     >

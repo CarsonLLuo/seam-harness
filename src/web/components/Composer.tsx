@@ -35,7 +35,7 @@ export function Composer(props: {
   };
 
   return (
-    <div className="rounded-2xl border border-border/80 bg-input-surface p-2 shadow-sm transition-colors focus-within:border-ring/40">
+    <div className="rounded-2xl border border-border bg-input-surface p-2 shadow-sm transition-colors focus-within:border-ring/40">
       <Textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
