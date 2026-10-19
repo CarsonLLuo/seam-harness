@@ -14,9 +14,8 @@ import {
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ReplayToolCall, ReplayTurn } from "../../replay";
-import type { ApprovalDecision, ApprovalRequest } from "../api";
+import type { ApprovalRequest } from "../api";
 import { useI18n } from "../i18n/i18n";
-import { ApprovalCard } from "./ApprovalCard";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
@@ -62,7 +61,6 @@ export function Turn({
   streaming,
   animate,
   approvals,
-  onApproval,
   onRaw,
 }: {
   turn: ReplayTurn;
@@ -70,7 +68,6 @@ export function Turn({
   /** 只在运行过程中新出现的回合入场时播放动画，打开历史会话时不重播 */
   animate?: boolean;
   approvals?: Record<string, ApprovalRequest>;
-  onApproval?: (toolCallId: string, body: ApprovalDecision) => Promise<void>;
   onRaw: Raw;
 }) {
   const { t } = useI18n();
@@ -120,7 +117,6 @@ export function Turn({
                 call={c}
                 animate={animate}
                 approval={approvals?.[c.call.toolCallId]}
-                onApproval={onApproval}
                 onRaw={onRaw}
               />
             ))}
@@ -142,13 +138,11 @@ function ToolCallRow({
   call,
   animate,
   approval,
-  onApproval,
   onRaw,
 }: {
   call: ReplayToolCall;
   animate?: boolean;
   approval?: ApprovalRequest;
-  onApproval?: (toolCallId: string, body: ApprovalDecision) => Promise<void>;
   onRaw: Raw;
 }) {
   const { t } = useI18n();
@@ -211,10 +205,7 @@ function ToolCallRow({
         <span className="italic">{typeof args.intent === "string" ? args.intent : t.intentMissing}</span>
       </div>
 
-      {/* 模型的请求被 harness 拦下，交给用户决定 */}
-      {approval && onApproval && (
-        <ApprovalCard request={approval} onRespond={(body) => onApproval(approval.toolCallId, body)} />
-      )}
+      {/* 待确认的请求不在工具行里展开：它显示在对话底部、输入框上方 */}
 
       {/* harness 的拦截原因：不用展开就能看到 */}
       {permission?.code === "outside_workspace" && (

@@ -2,10 +2,11 @@ import { History, Lightbulb, PanelRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { SeamEvent } from "../../events";
 import { reconstruct } from "../../replay";
-import { respondApproval, sendMessage, startTask, stopSession, subscribe, type ApprovalDecision, type ApprovalRequest, type Config } from "../api";
+import { respondApproval, sendMessage, startTask, stopSession, subscribe, type ApprovalRequest, type Config } from "../api";
 import { useI18n } from "../i18n/i18n";
 import { eventsAtStep, replaySteps } from "../replay-steps";
 import { Conversation, ConversationContent, ConversationScrollButton } from "@/components/ai-elements/conversation";
+import { ApprovalBanner } from "./ApprovalBanner";
 import { Composer } from "./Composer";
 import { IconButton } from "./IconButton";
 import { ModelPicker } from "./ModelPicker";
@@ -165,7 +166,8 @@ export function SessionChat({ sessionId, onActivity, ...view }: ViewProps & { se
   const session = useMemo(() => reconstruct(visible), [visible]);
   const full = useMemo(() => reconstruct(events), [events]);
   const start = full.start;
-  const waiting = Object.keys(approvals).length > 0;
+  const pendingApprovals = Object.values(approvals);
+  const waiting = pendingApprovals.length > 0;
   const status = waiting ? "waiting" : running ? "running" : (full.end?.reason ?? "unknown");
 
   if (!start) return <div className="flex-1" />;
@@ -204,9 +206,6 @@ export function SessionChat({ sessionId, onActivity, ...view }: ViewProps & { se
               animate={!replaying && animateFrom !== null && index >= animateFrom}
               streaming={replaying || turn.assistant ? undefined : deltas[turn.turn]}
               approvals={approvals}
-              onApproval={async (toolCallId, body) => {
-                await respondApproval(sessionId, toolCallId, body);
-              }}
               onRaw={view.onRaw}
             />
           ))}
@@ -215,6 +214,16 @@ export function SessionChat({ sessionId, onActivity, ...view }: ViewProps & { se
       </Conversation>
 
       <div className="mx-auto w-full max-w-3xl px-6 pb-5">
+        {pendingApprovals[0] && (
+          <ApprovalBanner
+            key={pendingApprovals[0].toolCallId}
+            request={pendingApprovals[0]}
+            count={pendingApprovals.length}
+            onRespond={async (body) => {
+              await respondApproval(sessionId, pendingApprovals[0]!.toolCallId, body);
+            }}
+          />
+        )}
         {replaying ? (
           <ReplayBar steps={steps.length} step={replayStep} onStep={setReplayStep} />
         ) : (
