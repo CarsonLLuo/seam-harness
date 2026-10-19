@@ -100,12 +100,14 @@ Requires [Bun](https://bun.sh) 1.3 or later.
 bun install
 ```
 
-Set an API key for at least one provider. To use a relay, also set its base URL:
+Set an API key for at least one provider, either as environment variables or in a `.env` file at the project root (ignored by git). To use a relay, also set its base URL:
 
 | Provider | Key | Base URL (optional) |
 | --- | --- | --- |
 | Anthropic | `ANTHROPIC_API_KEY` (or `ANTHROPIC_AUTH_TOKEN`) | `ANTHROPIC_BASE_URL` |
 | DeepSeek | `DEEPSEEK_API_KEY` | `DEEPSEEK_BASE_URL` |
+
+Values in `.env` take precedence over environment variables with the same name, so tools that preset variables like `ANTHROPIC_BASE_URL` will not get in the way. Empty values in `.env` are ignored.
 
 Run a task in a workspace, then replay it from the log:
 
@@ -114,7 +116,15 @@ bun src/cli.ts run --provider anthropic --workspace examples/untested-functions 
 bun src/cli.ts replay <sessionId>
 ```
 
-Reading and searching are allowed automatically; writing files and running commands ask for your approval in the terminal. Every session is logged to `~/.seam/sessions/<sessionId>.jsonl` (set `SEAM_HOME` to change this), including the exact HTTP request sent to the model, with credentials redacted.
+Or use the local web UI, which shows each turn live and lets you replay past sessions step by step:
+
+```bash
+bun run dev
+```
+
+Open the link printed in the terminal; it contains an access token, and the server only listens on `127.0.0.1`. In the web UI, writing files and running commands are always denied for now.
+
+In the command line, reading and searching are allowed automatically; writing files and running commands ask for your approval in the terminal. Every session is logged to `~/.seam/sessions/<sessionId>.jsonl` (set `SEAM_HOME` to change this), including the exact HTTP request sent to the model, with credentials redacted.
 
 ## Roadmap
 

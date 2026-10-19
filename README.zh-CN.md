@@ -100,12 +100,14 @@ Seam 的每个事件都写入同一份事件日志，解释层只读这份日志
 bun install
 ```
 
-至少为一家供应商设置 API Key；使用中转站时，再设置对应的地址：
+至少为一家供应商设置 API Key，可以用环境变量，也可以写在项目根目录的 `.env` 文件里（已被 git 忽略）。使用中转站时，再设置对应的地址：
 
 | 供应商 | Key | 地址（可选） |
 | --- | --- | --- |
 | Anthropic | `ANTHROPIC_API_KEY`（或 `ANTHROPIC_AUTH_TOKEN`） | `ANTHROPIC_BASE_URL` |
 | DeepSeek | `DEEPSEEK_API_KEY` | `DEEPSEEK_BASE_URL` |
+
+`.env` 里的值优先于同名的环境变量，所以即使别的工具预先设置了 `ANTHROPIC_BASE_URL` 之类的变量，也不会干扰 Seam。`.env` 里留空的变量会被忽略。
 
 在一个工作区里运行任务，再从日志回放：
 
@@ -114,7 +116,15 @@ bun src/cli.ts run --provider anthropic --workspace examples/untested-functions 
 bun src/cli.ts replay <sessionId>
 ```
 
-读取和搜索自动放行；写文件和执行命令会在终端里请你确认。每次会话都会记录到 `~/.seam/sessions/<sessionId>.jsonl`（可用 `SEAM_HOME` 修改），包括发给模型的真实 HTTP 请求，鉴权信息已去除。
+也可以使用本地 Web 界面：实时显示每一轮，也能逐步回放过去的会话：
+
+```bash
+bun run dev
+```
+
+打开终端里打印的链接，链接里带有访问令牌，服务只监听 `127.0.0.1`。目前在 Web 界面里，写文件和执行命令一律会被拒绝。
+
+在命令行里，读取和搜索自动放行；写文件和执行命令会在终端里请你确认。每次会话都会记录到 `~/.seam/sessions/<sessionId>.jsonl`（可用 `SEAM_HOME` 修改），包括发给模型的真实 HTTP 请求，鉴权信息已去除。
 
 ## 路线图
 

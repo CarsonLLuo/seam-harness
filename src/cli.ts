@@ -1,17 +1,18 @@
 // Seam v0 命令行。
-//   bun src/cli.ts run [--provider anthropic|deepseek] [--model <id>] [--workspace <dir>] [--max-turns <n>] "<task>"
+//   bun src/cli.ts run [--provider anthropic|deepseek] [--model <id>] [--workspace <dir>] [--max-turns <n>] [--lang en|zh] "<task>"
 //   bun src/cli.ts replay <log.jsonl | sessionId> [--raw]
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
+import { loadProjectEnv } from "./env";
 import { readLog } from "./log";
 import { resolveModel, type ProviderName } from "./models";
 import { formatEvent } from "./replay";
 import { defaultLogDir, runSession, type Approver } from "./session";
 
 const USAGE = `Usage:
-  bun src/cli.ts run [--provider anthropic|deepseek] [--model <id>] [--workspace <dir>] [--max-turns <n>] "<task>"
+  bun src/cli.ts run [--provider anthropic|deepseek] [--model <id>] [--workspace <dir>] [--max-turns <n>] [--lang en|zh] "<task>"
   bun src/cli.ts replay <log.jsonl | sessionId> [--raw]`;
 
 const askInTerminal: Approver = async (req) => {
@@ -43,6 +44,7 @@ async function run(argv: string[]) {
       model: { type: "string" },
       workspace: { type: "string", default: process.cwd() },
       "max-turns": { type: "string" },
+      lang: { type: "string", default: "en" },
     },
   });
   const task = positionals.join(" ").trim();
@@ -55,6 +57,7 @@ async function run(argv: string[]) {
     apiKey,
     approve: askInTerminal,
     maxTurns: values["max-turns"] ? Number(values["max-turns"]) : undefined,
+    lang: values.lang === "zh" ? "zh" : "en",
     onEvent: (e) => {
       const line = formatEvent(e);
       if (line) console.log(line);
@@ -79,6 +82,8 @@ function replay(argv: string[]) {
     if (line) console.log(line);
   }
 }
+
+loadProjectEnv();
 
 const [command, ...rest] = process.argv.slice(2);
 try {

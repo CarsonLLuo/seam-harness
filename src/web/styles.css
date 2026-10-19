@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+/* 设计变量：中性灰阶 + 少量语义色。颜色只用来表达“这条信息是谁说的”，见 docs/ui-reference.md */
+:root {
+  --background: 0 0% 100%;
+  --foreground: 0 0% 9%;
+  --sidebar: 60 10% 98%;
+  --muted: 60 5% 96%;
+  --muted-foreground: 0 0% 42%;
+  --border: 0 0% 90%;
+  --card: 0 0% 100%;
+  --primary: 0 0% 9%;
+  --primary-foreground: 0 0% 98%;
+  --destructive: 0 72% 48%;
+  /* 模型自述专用色：全界面只用于 intent 和模型对自己行为的说明 */
+  --self-report: 262 48% 50%;
+  /* harness 记录的事实 */
+  --fact: 152 45% 32%;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05), 0 1px 1px 0 rgb(0 0 0 / 0.04);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: 0 0% 8%;
+    --foreground: 0 0% 96%;
+    --sidebar: 0 0% 11%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 62%;
+    --border: 0 0% 20%;
+    --card: 0 0% 12%;
+    --primary: 0 0% 96%;
+    --primary-foreground: 0 0% 9%;
+    --destructive: 0 62% 58%;
+    --self-report: 262 70% 74%;
+    --fact: 152 45% 58%;
+    --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.5), inset 0 1px 0 0 hsl(0 0% 100% / 0.06);
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-sidebar: hsl(var(--sidebar));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-border: hsl(var(--border));
+  --color-card: hsl(var(--card));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-self-report: hsl(var(--self-report));
+  --color-fact: hsl(var(--fact));
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", "Microsoft YaHei",
+    system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --shadow-sm: var(--shadow-sm);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--font-sans);
+  font-feature-settings: "tnum";
+  -webkit-font-smoothing: antialiased;
+}

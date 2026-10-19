@@ -12,7 +12,7 @@ export type ProviderName = "anthropic" | "deepseek";
 const DEFAULTS: Record<ProviderName, { modelId: string; key: () => string | undefined; baseUrl: () => string | undefined }> = {
   anthropic: {
     modelId: "claude-sonnet-5-5",
-    key: () => process.env.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_AUTH_TOKEN,
+    key: () => process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN, // .env 里留空的值是空字符串，所以用 ||
     baseUrl: () => process.env.ANTHROPIC_BASE_URL,
   },
   deepseek: {
