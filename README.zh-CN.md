@@ -6,7 +6,7 @@
 
 功能精简、解释深入。让一个从没听说过 harness 的人，在使用 agent 的过程中自然地理解它在做什么、为什么这样做，并且知道自己可以在哪里插手。
 
-![status](https://img.shields.io/badge/status-planning-lightgrey?style=flat-square)
+![status](https://img.shields.io/badge/status-v0_command--line-orange?style=flat-square)
 ![runtime](https://img.shields.io/badge/runtime-Bun-black?style=flat-square)
 ![agent loop](https://img.shields.io/badge/agent_loop-pi--agent--core-blue?style=flat-square)
 
@@ -18,7 +18,7 @@
 
 ---
 
-> **当前状态：规划完成，尚未开始编码。** 下文描述的是设计目标，而不是已有功能。
+> **当前状态：v0 已完成**，即带完整事件日志的命令行 agent。下文描述的解释功能是 v1 及以后的设计目标。
 
 ## 为什么需要 Seam？
 
@@ -92,11 +92,35 @@ Seam 的每个事件都写入同一份事件日志，解释层只读这份日志
 | 文献汇总 | “从这 12 篇 PDF 里汇总研究方法” | 哪些文件读过、结论来自哪一页 |
 | 笔记转待办 | “把这周的会议笔记整理成待办清单” | 每条待办的出处 |
 
+## 快速上手（v0）
+
+需要 [Bun](https://bun.sh) 1.3 或更高版本。
+
+```bash
+bun install
+```
+
+至少为一家供应商设置 API Key；使用中转站时，再设置对应的地址：
+
+| 供应商 | Key | 地址（可选） |
+| --- | --- | --- |
+| Anthropic | `ANTHROPIC_API_KEY`（或 `ANTHROPIC_AUTH_TOKEN`） | `ANTHROPIC_BASE_URL` |
+| DeepSeek | `DEEPSEEK_API_KEY` | `DEEPSEEK_BASE_URL` |
+
+在一个工作区里运行任务，再从日志回放：
+
+```bash
+bun src/cli.ts run --provider anthropic --workspace examples/untested-functions "Find all exported functions that have no tests."
+bun src/cli.ts replay <sessionId>
+```
+
+读取和搜索自动放行；写文件和执行命令会在终端里请你确认。每次会话都会记录到 `~/.seam/sessions/<sessionId>.jsonl`（可用 `SEAM_HOME` 修改），包括发给模型的真实 HTTP 请求，鉴权信息已去除。
+
 ## 路线图
 
 每一种新的上下文来源，都要在它的解释方式设计好之后才加入。
 
-- [ ] **v0 地基**：命令行 agent，4 个工具，完整的事件日志
+- [x] **v0 地基**：命令行 agent，4 个工具，完整的事件日志
 - [ ] **v1 可解释核心**（目标 2027 年 1 月底）：本地 Web 界面、权限解释、计划审批、任务地图、阅读覆盖图、事实与自述区分、结论溯源
 - [ ] **v2 书桌、记忆与 Skills**：可见、可编辑的上下文，项目记忆，中途转向，回退分支，多供应商
 - [ ] **v3 外部世界**：浏览器自动化、双视图网页、注入提醒、MCP、反事实回放

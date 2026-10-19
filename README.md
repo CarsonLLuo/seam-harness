@@ -6,7 +6,7 @@
 
 Small in features, deep in explanation. Seam helps people who have never heard the word "harness" understand, while they use an agent, what it is doing, why it is doing it, and where they can step in.
 
-![status](https://img.shields.io/badge/status-planning-lightgrey?style=flat-square)
+![status](https://img.shields.io/badge/status-v0_command--line-orange?style=flat-square)
 ![runtime](https://img.shields.io/badge/runtime-Bun-black?style=flat-square)
 ![agent loop](https://img.shields.io/badge/agent_loop-pi--agent--core-blue?style=flat-square)
 
@@ -18,7 +18,7 @@ English | [简体中文](./README.zh-CN.md)
 
 ---
 
-> **Status: planning complete, no code yet.** Everything below describes design goals, not existing features.
+> **Status: v0 is done** — a command-line agent with a complete event log. The explanation features described below are design goals for v1 and later.
 
 ## Why Seam?
 
@@ -92,11 +92,35 @@ The first version focuses on tasks whose results users can understand and check 
 | Literature summary | "Summarize the research methods in these 12 PDFs" | Which files were read, and which page each conclusion came from |
 | Notes to to-dos | "Turn this week's meeting notes into a to-do list" | Where each to-do came from |
 
+## Quick start (v0)
+
+Requires [Bun](https://bun.sh) 1.3 or later.
+
+```bash
+bun install
+```
+
+Set an API key for at least one provider. To use a relay, also set its base URL:
+
+| Provider | Key | Base URL (optional) |
+| --- | --- | --- |
+| Anthropic | `ANTHROPIC_API_KEY` (or `ANTHROPIC_AUTH_TOKEN`) | `ANTHROPIC_BASE_URL` |
+| DeepSeek | `DEEPSEEK_API_KEY` | `DEEPSEEK_BASE_URL` |
+
+Run a task in a workspace, then replay it from the log:
+
+```bash
+bun src/cli.ts run --provider anthropic --workspace examples/untested-functions "Find all exported functions that have no tests."
+bun src/cli.ts replay <sessionId>
+```
+
+Reading and searching are allowed automatically; writing files and running commands ask for your approval in the terminal. Every session is logged to `~/.seam/sessions/<sessionId>.jsonl` (set `SEAM_HOME` to change this), including the exact HTTP request sent to the model, with credentials redacted.
+
 ## Roadmap
 
 Each new source of context is added only after its explanation has been designed.
 
-- [ ] **v0 Foundation**: a command-line agent with 4 tools and a complete event log
+- [x] **v0 Foundation**: a command-line agent with 4 tools and a complete event log
 - [ ] **v1 Explainable core** (target: end of January 2027): local web UI, permission explanations, plan approval, task map, reading coverage map, fact/self-report separation, conclusion tracing
 - [ ] **v2 Desk, memory and Skills**: visible and editable context, project memory, mid-run steering, rewind and branching, multiple providers
 - [ ] **v3 The outside world**: browser automation, dual-view web pages, injection warnings, MCP, counterfactual replay
