@@ -1,8 +1,17 @@
 // 前端调用本地服务的接口。令牌在 HttpOnly Cookie 里，同源请求会自动带上。
 import type { ProviderInfo, SessionSummary, StreamMessage } from "../server/server";
+import type { ApprovalRequest } from "../session";
 import type { Lang } from "./i18n/i18n";
 
-export type { ProviderInfo, SessionSummary, StreamMessage };
+export type { ApprovalRequest, ProviderInfo, SessionSummary, StreamMessage };
+
+/** 用户对挂起请求的决定 */
+export interface ApprovalDecision {
+  decision: "allow" | "deny";
+  reason?: string;
+  /** 计划被批准时，用户修改后的步骤 */
+  steps?: string[];
+}
 
 export interface Config {
   defaultWorkspace: string;
@@ -51,6 +60,9 @@ export const startTask = (input: { task: string; provider: string; model: string
 export const sendMessage = (id: string, text: string) => post<{ ok: true }>(`/api/sessions/${id}/messages`, { text });
 
 export const stopSession = (id: string) => post<{ ok: true }>(`/api/sessions/${id}/stop`);
+
+export const respondApproval = (id: string, toolCallId: string, body: ApprovalDecision) =>
+  post<{ ok: true }>(`/api/sessions/${id}/approvals/${toolCallId}`, body);
 
 /** 订阅会话的事件流：先收到已有事件和当前状态，之后持续推送。返回取消订阅的函数 */
 export function subscribe(id: string, onMessage: (m: StreamMessage) => void): () => void {

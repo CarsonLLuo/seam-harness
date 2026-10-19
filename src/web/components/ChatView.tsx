@@ -2,7 +2,7 @@ import { History, Lightbulb, PanelRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { SeamEvent } from "../../events";
 import { reconstruct } from "../../replay";
-import { sendMessage, startTask, stopSession, subscribe, type Config } from "../api";
+import { respondApproval, sendMessage, startTask, stopSession, subscribe, type ApprovalDecision, type ApprovalRequest, type Config } from "../api";
 import { useI18n } from "../i18n/i18n";
 import { eventsAtStep, replaySteps } from "../replay-steps";
 import { Conversation, ConversationContent, ConversationScrollButton } from "@/components/ai-elements/conversation";
@@ -111,6 +111,7 @@ export function SessionChat({ sessionId, onActivity, ...view }: ViewProps & { se
   const [running, setRunning] = useState(false);
   const [replayStep, setReplayStep] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [approvals, setApprovals] = useState<Record<string, ApprovalRequest>>({});
   // 服务端补发完历史事件后才会发第一条 status；在此之前收到的回合都算历史，不播入场动画
   const [animateFrom, setAnimateFrom] = useState<number | null>(null);
   const lastSeq = useRef(0);
@@ -124,11 +125,31 @@ export function SessionChat({ sessionId, onActivity, ...view }: ViewProps & { se
           if (m.event.seq <= lastSeq.current) return;
           lastSeq.current = m.event.seq;
           if (m.event.type === "turn_start") turnCount.current += 1;
+          if (m.event.type === "permission") {
+            // 某个请求已经有决定了，顺手收掉可能残留的确认卡
+            const toolCallId = m.event.data.toolCallId;
+            setApprovals((prev) => {
+              if (!(toolCallId in prev)) return prev;
+              const next = { ...prev };
+              delete next[toolCallId];
+              return next;
+            });
+          }
           setEvents((prev) => [...prev, m.event]);
         } else if (m.kind === "delta") setDeltas((prev) => ({ ...prev, [m.turn]: (prev[m.turn] ?? "") + m.text }));
-        else {
+        else if (m.kind === "approval") {
+          setApprovals((prev) => ({ ...prev, [m.request.toolCallId]: m.request }));
+        } else if (m.kind === "approval_resolved") {
+          setApprovals((prev) => {
+            const next = { ...prev };
+            delete next[m.toolCallId];
+            return next;
+          });
+        } else {
           setAnimateFrom((v) => v ?? turnCount.current);
           setRunning(m.running);
+          // 运行结束后不应该还有挂起的确认；清掉重连时可能残留的旧卡片
+          if (!m.running) setApprovals({});
           onActivity();
         }
       }),
@@ -144,7 +165,8 @@ export function SessionChat({ sessionId, onActivity, ...view }: ViewProps & { se
   const session = useMemo(() => reconstruct(visible), [visible]);
   const full = useMemo(() => reconstruct(events), [events]);
   const start = full.start;
-  const status = running ? "running" : (full.end?.reason ?? "unknown");
+  const waiting = Object.keys(approvals).length > 0;
+  const status = waiting ? "waiting" : running ? "running" : (full.end?.reason ?? "unknown");
 
   if (!start) return <div className="flex-1" />;
 
@@ -181,6 +203,10 @@ export function SessionChat({ sessionId, onActivity, ...view }: ViewProps & { se
               turn={turn}
               animate={!replaying && animateFrom !== null && index >= animateFrom}
               streaming={replaying || turn.assistant ? undefined : deltas[turn.turn]}
+              approvals={approvals}
+              onApproval={async (toolCallId, body) => {
+                await respondApproval(sessionId, toolCallId, body);
+              }}
               onRaw={view.onRaw}
             />
           ))}

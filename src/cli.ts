@@ -20,11 +20,26 @@ const askInTerminal: Approver = async (req) => {
   console.log(
     [
       "",
-      `  ? The model requests ${req.name} with ${JSON.stringify(rest)}`,
+      `  ? The model requests ${req.name}`,
       `    It says: ${intent ?? "(no intent given)"}`,
       "    This is a request from the model. The harness stopped it and is handing the decision to you.",
     ].join("\n"),
   );
+  if (req.preview?.kind === "plan") {
+    console.log("    Proposed plan:");
+    req.preview.steps.forEach((s, i) => console.log(`      ${i + 1}. ${s}`));
+  } else if (req.preview?.kind === "write_file") {
+    console.log(
+      `    ${req.preview.created ? "Create" : "Overwrite"} ${req.preview.path} ` +
+        `(${req.preview.bytes} bytes, +${req.preview.added}/-${req.preview.removed} lines)`,
+    );
+    if (req.preview.diff) console.log(req.preview.diff.split("\n").map((l) => `      ${l}`).join("\n"));
+  } else if (req.preview?.kind === "run_command") {
+    console.log(`    Command: ${req.preview.command}`);
+    console.log("    This runs with your permissions and can reach outside the workspace.");
+  } else {
+    console.log(`    Arguments: ${JSON.stringify(rest)}`);
+  }
   if (!process.stdin.isTTY) {
     console.log("    Not running in an interactive terminal, so the request is denied.");
     return { approved: false, reason: "The user is not available to approve this, so it was denied." };
@@ -32,7 +47,7 @@ const askInTerminal: Approver = async (req) => {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const answer = (await rl.question("    Approve? [y/N] ")).trim().toLowerCase();
   rl.close();
-  return answer === "y" || answer === "yes";
+  return answer === "y" || answer === "yes" ? true : { approved: false, reason: "The user denied this request." };
 };
 
 async function run(argv: string[]) {

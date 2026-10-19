@@ -1,12 +1,18 @@
 // Seam 的 4 个工具。每个工具的参数里都有必填的 intent：模型对“为什么调用”的自述。
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "@earendil-works/pi-ai";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 
 /** 需要用户确认才能执行的工具；其余工具自动放行 */
 export const TOOLS_NEEDING_APPROVAL = new Set(["write_file", "run_command"]);
+
+/** 参数里有工作区路径的工具，以及对应的参数名 */
+export const PATH_ARG: Record<string, string> = { read_file: "path", write_file: "path", search: "path" };
+
+/** 计划工具：模型在第一次修改工作区之前必须先调用它 */
+export const PLAN_TOOL_NAME = "propose_plan";
 
 const READ_LIMIT = 400; // read_file 默认一次最多读取的行数
 const MAX_FILE_BYTES = 1_000_000;
@@ -38,6 +44,123 @@ export function resolveInWorkspace(workspace: string, path: string): string {
 
 function text(t: string) {
   return [{ type: "text" as const, text: t }];
+}
+
+// ---- 写文件确认框用的预览 ----
+
+export interface WritePreview {
+  kind: "write_file";
+  path: string;
+  created: boolean;
+  bytes: number;
+  added: number;
+  removed: number;
+  /** 逐行差异，超过上限时截断；文件太大时不计算 */
+  diff?: string;
+}
+
+const DIFF_MAX_LINES = 800;
+const DIFF_MAX_OUTPUT = 200;
+
+function linesOf(s: string): string[] {
+  const lines = s.split(/\r?\n/);
+  if (lines.at(-1) === "") lines.pop();
+  return lines;
+}
+
+function lineDiff(oldText: string, newText: string): Pick<WritePreview, "added" | "removed" | "diff"> {
+  const a = linesOf(oldText);
+  const b = linesOf(newText);
+  if (a.length > DIFF_MAX_LINES || b.length > DIFF_MAX_LINES) {
+    return { added: b.length, removed: a.length };
+  }
+  // 最长公共子序列；文件较大时上面的上限已经挡掉了
+  const dp = Array.from({ length: a.length + 1 }, () => new Uint16Array(b.length + 1));
+  for (let i = a.length - 1; i >= 0; i--) {
+    for (let j = b.length - 1; j >= 0; j--) {
+      dp[i]![j] = a[i] === b[j] ? dp[i + 1]![j + 1]! + 1 : Math.max(dp[i + 1]![j]!, dp[i]![j + 1]!);
+    }
+  }
+  const out: string[] = [];
+  let i = 0;
+  let j = 0;
+  let added = 0;
+  let removed = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) {
+      out.push(` ${a[i]}`);
+      i++;
+      j++;
+    } else if (dp[i + 1]![j]! >= dp[i]![j + 1]!) {
+      out.push(`-${a[i++]}`);
+      removed++;
+    } else {
+      out.push(`+${b[j++]}`);
+      added++;
+    }
+  }
+  while (i < a.length) {
+    out.push(`-${a[i++]}`);
+    removed++;
+  }
+  while (j < b.length) {
+    out.push(`+${b[j++]}`);
+    added++;
+  }
+  const limited = out.length > DIFF_MAX_OUTPUT ? [...out.slice(0, DIFF_MAX_OUTPUT), "…"] : out;
+  return { added, removed, diff: limited.join("\n") };
+}
+
+/** 在请求批准之前算出“这个写入会做什么”，供确认框显示 */
+export function summarizeWrite(workspace: string, path: string, content: string): WritePreview {
+  const root = realpathSync(workspace);
+  const abs = resolveInWorkspace(root, path);
+  const created = !existsSync(abs);
+  const oldText = created ? "" : readFileSync(abs, "utf8");
+  return {
+    kind: "write_file",
+    path: relative(root, abs) || ".",
+    created,
+    bytes: Buffer.byteLength(content),
+    ...lineDiff(oldText, content),
+  };
+}
+
+// ---- 计划工具 ----
+
+export interface PlanState {
+  steps: string[];
+  originalSteps: string[];
+  edited: boolean;
+}
+
+/** 计划工具本身不读写文件；批准后的步骤由 session 放进来，再作为工具结果交给模型 */
+export function createPlanTool(getPlan: () => PlanState | undefined, lang: "en" | "zh"): AgentTool<any> {
+  return {
+    name: PLAN_TOOL_NAME,
+    label: "Propose plan",
+    description:
+      "Present a short, ordered plan to the user before you write files or run commands. " +
+      "The user can edit the steps. Call this before the first change and follow the approved plan.",
+    parameters: Type.Object({
+      steps: Type.Array(Type.String(), {
+        minItems: 1,
+        maxItems: 10,
+        description: "The steps you intend to take, in order. One short, concrete sentence each.",
+      }),
+      intent,
+    }),
+    async execute() {
+      const plan = getPlan();
+      if (!plan) throw new Error("The plan has not been approved.");
+      const heading =
+        lang === "zh" ? "用户已批准以下计划，请按它执行：" : "The user approved this plan. Follow it:";
+      const edited =
+        plan.edited ? (lang === "zh" ? "（用户修改过步骤）\n" : " (the user edited the steps)\n") : "";
+      const body = plan.steps.map((s, i) => `${i + 1}. ${s}`).join("\n");
+      return { content: text(`${heading}\n${edited}${body}`), details: plan };
+    },
+  };
 }
 
 function truncate(s: string, max: number): { text: string; truncated: boolean } {

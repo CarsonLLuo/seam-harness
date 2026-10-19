@@ -22,6 +22,8 @@ export interface EventPayloads {
     tools: string[];
     /** 界面语言；M2.5 之前的日志没有这个字段 */
     lang?: "en" | "zh";
+    /** 工作区根目录的说明文件（SEAM.md），由 harness 读取并放进系统提示词 */
+    workspaceNote?: { path: string; content: string; truncated: boolean };
   };
   user_message: { content: unknown };
   turn_start: Record<string, never>;
@@ -37,7 +39,18 @@ export interface EventPayloads {
     errorMessage?: string;
   };
   tool_call: { toolCallId: string; name: string; args: Record<string, unknown>; intent?: string };
-  permission: { toolCallId: string; name: string; decision: "allow" | "deny"; by: "auto" | "user"; reason?: string };
+  permission: {
+    toolCallId: string;
+    name: string;
+    decision: "allow" | "deny";
+    /** auto：harness 自动决定；user：用户决定；timeout / aborted：等待中失去条件 */
+    by: "auto" | "user" | "timeout" | "aborted";
+    reason?: string;
+    /** 结构化的原因，界面据此本地化解释，不解析 reason 字符串 */
+    code?: "outside_workspace" | "plan_required" | "plan_denied" | "not_executed" | "timeout" | "aborted";
+    /** 越界或被拒绝的路径 */
+    path?: string;
+  };
   tool_result: {
     toolCallId: string;
     name: string;

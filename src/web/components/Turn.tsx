@@ -1,8 +1,22 @@
-import { Check, ChevronRight, FilePen, FileText, Loader2, Search, SquareTerminal, Wrench, X, type LucideIcon } from "lucide-react";
+import {
+  Check,
+  ChevronRight,
+  FilePen,
+  FileText,
+  ListChecks,
+  Loader2,
+  Search,
+  SquareTerminal,
+  Wrench,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ReplayToolCall, ReplayTurn } from "../../replay";
+import type { ApprovalDecision, ApprovalRequest } from "../api";
 import { useI18n } from "../i18n/i18n";
+import { ApprovalCard } from "./ApprovalCard";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
@@ -13,6 +27,7 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   write_file: FilePen,
   search: Search,
   run_command: SquareTerminal,
+  propose_plan: ListChecks,
 };
 
 /** 工具调用最值得一眼看到的参数 */
@@ -46,12 +61,16 @@ export function Turn({
   turn,
   streaming,
   animate,
+  approvals,
+  onApproval,
   onRaw,
 }: {
   turn: ReplayTurn;
   streaming?: string;
   /** 只在运行过程中新出现的回合入场时播放动画，打开历史会话时不重播 */
   animate?: boolean;
+  approvals?: Record<string, ApprovalRequest>;
+  onApproval?: (toolCallId: string, body: ApprovalDecision) => Promise<void>;
   onRaw: Raw;
 }) {
   const { t } = useI18n();
@@ -96,7 +115,14 @@ export function Turn({
         {turn.toolCalls.length > 0 && (
           <div className={cn("space-y-1.5", text && "mt-3")}>
             {turn.toolCalls.map((c) => (
-              <ToolCallRow key={c.call.toolCallId} call={c} animate={animate} onRaw={onRaw} />
+              <ToolCallRow
+                key={c.call.toolCallId}
+                call={c}
+                animate={animate}
+                approval={approvals?.[c.call.toolCallId]}
+                onApproval={onApproval}
+                onRaw={onRaw}
+              />
             ))}
           </div>
         )}
@@ -112,11 +138,24 @@ export function Turn({
   );
 }
 
-function ToolCallRow({ call, animate, onRaw }: { call: ReplayToolCall; animate?: boolean; onRaw: Raw }) {
+function ToolCallRow({
+  call,
+  animate,
+  approval,
+  onApproval,
+  onRaw,
+}: {
+  call: ReplayToolCall;
+  animate?: boolean;
+  approval?: ApprovalRequest;
+  onApproval?: (toolCallId: string, body: ApprovalDecision) => Promise<void>;
+  onRaw: Raw;
+}) {
   const { t } = useI18n();
   const { name, args } = call.call;
   const Icon = TOOL_ICONS[name] ?? Wrench;
-  const keyArg = args[KEY_ARG[name] ?? ""];
+  const planSteps = Array.isArray(args.steps) ? args.steps : undefined;
+  const keyArg = planSteps ? t.plan.stepCount(planSteps.length) : args[KEY_ARG[name] ?? ""];
   const permission = call.permission;
   const result = call.result;
   const denied = permission?.decision === "deny";
@@ -124,9 +163,23 @@ function ToolCallRow({ call, animate, onRaw }: { call: ReplayToolCall; animate?:
 
   const StatusIcon = !result ? Loader2 : denied || result.isError ? X : Check;
   const permissionLabel = !permission
-    ? t.permission.pending
+    ? approval
+      ? t.permission.waitingUser
+      : t.permission.pending
     : denied
-      ? t.permission.deny
+      ? permission.by === "timeout"
+        ? t.permission.byTimeout
+        : permission.by === "aborted"
+          ? t.permission.byAborted
+          : permission.code === "outside_workspace"
+            ? t.permission.boundary
+            : permission.code === "plan_required"
+              ? t.permission.planRequired
+              : permission.code === "plan_denied"
+                ? t.permission.planDenied
+                : permission.code === "not_executed"
+                  ? t.permission.notExecuted
+                  : t.permission.deny
       : permission.by === "auto"
         ? t.permission.allowAuto
         : t.permission.allowUser;
@@ -157,6 +210,24 @@ function ToolCallRow({ call, animate, onRaw }: { call: ReplayToolCall; animate?:
         <span className="font-medium">{t.modelSays}</span>{" "}
         <span className="italic">{typeof args.intent === "string" ? args.intent : t.intentMissing}</span>
       </div>
+
+      {/* 模型的请求被 harness 拦下，交给用户决定 */}
+      {approval && onApproval && (
+        <ApprovalCard request={approval} onRespond={(body) => onApproval(approval.toolCallId, body)} />
+      )}
+
+      {/* harness 的拦截原因：不用展开就能看到 */}
+      {permission?.code === "outside_workspace" && (
+        <div className="mx-3 mb-2 rounded-md border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-xs leading-relaxed text-destructive">
+          {t.permission.outsideWorkspace(permission.path ?? "")}
+        </div>
+      )}
+      {permission?.code === "plan_required" && (
+        <div className="mx-3 mb-2 text-xs leading-relaxed text-muted-foreground">{t.permission.planRequiredHint}</div>
+      )}
+      {permission?.code === "not_executed" && (
+        <div className="mx-3 mb-2 text-xs leading-relaxed text-muted-foreground">{t.permission.notExecutedHint}</div>
+      )}
 
       {/* harness 记录的事实：展开后可见。高度动画放在外层，内边距放在内层，收起时高度才能真正归零 */}
       <CollapsibleContent

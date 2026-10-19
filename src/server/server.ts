@@ -10,7 +10,16 @@ import { join } from "node:path";
 import type { SeamEvent } from "../events";
 import { readLog } from "../log";
 import type { ProviderName } from "../models";
-import { resumeSession, startSession, type Lang, type Session, type SessionOptions } from "../session";
+import {
+  resumeSession,
+  startSession,
+  type ApprovalAnswer,
+  type ApprovalRequest,
+  type Approver,
+  type Lang,
+  type Session,
+  type SessionOptions,
+} from "../session";
 import type { FolderPicker } from "./folder-picker";
 
 export interface ServerOptions {
@@ -27,6 +36,8 @@ export interface ServerOptions {
   /** 前端页面（Bun 的 HTML 导入）；测试时可以不传 */
   app?: unknown;
   development?: boolean;
+  /** 等待用户确认的超时时间；默认 10 分钟，测试可以调短 */
+  approvalTimeoutMs?: number;
 }
 
 export interface ProviderInfo {
@@ -48,26 +59,48 @@ export interface SessionSummary {
 export type StreamMessage =
   | { kind: "event"; event: SeamEvent }
   | { kind: "delta"; turn: number; text: string }
-  | { kind: "status"; running: boolean };
+  | { kind: "status"; running: boolean }
+  /** 一个等用户决定的请求；重连时会重新补发 */
+  | { kind: "approval"; request: ApprovalRequest }
+  | { kind: "approval_resolved"; toolCallId: string };
 
-/** 服务端打开过的会话：事件缓存 + 订阅者 + 可选的 agent（追问或新建时才创建） */
+interface PendingApproval {
+  request: ApprovalRequest;
+  resolve: (answer: ApprovalAnswer) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+/** 服务端打开过的会话：事件缓存 + 订阅者 + 可选的 agent + 待确认的请求 */
 interface Entry {
   events: SeamEvent[];
   subscribers: Set<(m: StreamMessage) => void>;
   session?: Session;
+  lang: Lang;
+  pending: Map<string, PendingApproval>;
 }
 
 const COOKIE = "seam_token";
 const RECENT_WORKSPACES = 8;
+const APPROVAL_TIMEOUT_MS = 10 * 60 * 1000;
 
 const PICK_PROMPT: Record<Lang, string> = {
   en: "Choose the workspace folder for the agent",
   zh: "选择 agent 的工作区文件夹",
 };
 
-const DENY_REASON: Record<Lang, string> = {
-  en: "This version of the interface cannot ask the user for approval yet, so writing files and running commands are denied. Continue without them.",
-  zh: "当前版本的界面还不能向用户请求批准，所以写文件和执行命令都会被拒绝。请在不使用它们的情况下继续。",
+const TIMEOUT_REASON: Record<Lang, string> = {
+  en: "The user did not respond within 10 minutes, so the request was denied. Continue without it.",
+  zh: "用户 10 分钟内没有回应，请求已被拒绝。请在不使用它的情况下继续。",
+};
+
+const ABORTED_REASON: Record<Lang, string> = {
+  en: "The run was stopped before the user responded.",
+  zh: "用户还没有回应，这次运行就被停止了。",
+};
+
+const DENIED_REASON: Record<Lang, string> = {
+  en: "The user denied this request.",
+  zh: "用户拒绝了这个请求。",
 };
 
 function safeEqual(a: string, b: string): boolean {
@@ -122,7 +155,10 @@ export function createServer(opts: ServerOptions) {
     if (existing) return existing;
     const path = logPath(id);
     if (!path) return undefined;
-    const entry: Entry = { events: readLog(path), subscribers: new Set() };
+    const events = readLog(path);
+    const start = events.find((e) => e.type === "session_start");
+    const lang = start?.type === "session_start" ? (start.data.lang ?? "en") : "en";
+    const entry: Entry = { events, subscribers: new Set(), lang, pending: new Map() };
     entries.set(id, entry);
     return entry;
   }
@@ -140,12 +176,48 @@ export function createServer(opts: ServerOptions) {
     };
   }
 
-  // M2.5 还没有确认框：写入和执行命令一律拒绝，并把理由交给模型
-  const denyAll = (lang: Lang) => async () => ({ approved: false as const, reason: DENY_REASON[lang] });
+  /** 挂起一个请求，通过 SSE 推给界面；超时、停止或用户决定时收尾 */
+  function webApprover(entry: Entry): Approver {
+    return (req, signal) =>
+      new Promise<ApprovalAnswer>((resolve) => {
+        const lang = entry.lang;
+        const finish = (answer: ApprovalAnswer) => {
+          const pending = entry.pending.get(req.toolCallId);
+          if (!pending) return; // 已经被别的路径处理过
+          clearTimeout(pending.timer);
+          signal?.removeEventListener("abort", onAbort);
+          entry.pending.delete(req.toolCallId);
+          publish(entry, { kind: "approval_resolved", toolCallId: req.toolCallId });
+          resolve(answer);
+        };
+        const onAbort = () => finish({ approved: false, reason: ABORTED_REASON[lang], by: "aborted" });
+        if (signal?.aborted) {
+          resolve({ approved: false, reason: ABORTED_REASON[lang], by: "aborted" });
+          return;
+        }
+        signal?.addEventListener("abort", onAbort, { once: true });
+        const timer = setTimeout(
+          () => finish({ approved: false, reason: TIMEOUT_REASON[lang], by: "timeout" }),
+          opts.approvalTimeoutMs ?? APPROVAL_TIMEOUT_MS,
+        );
+        entry.pending.set(req.toolCallId, { request: req, resolve: finish, timer });
+        publish(entry, { kind: "approval", request: req });
+      });
+  }
+
+  /** 运行结束时清理还挂着的请求，避免 Promise 永远悬着 */
+  function clearPending(entry: Entry) {
+    for (const pending of [...entry.pending.values()]) {
+      pending.resolve({ approved: false, reason: ABORTED_REASON[entry.lang], by: "aborted" });
+    }
+  }
 
   function track(entry: Entry, run: Promise<unknown>) {
     publish(entry, { kind: "status", running: true });
-    run.catch(() => undefined).finally(() => publish(entry, { kind: "status", running: false }));
+    run.catch(() => undefined).finally(() => {
+      clearPending(entry);
+      publish(entry, { kind: "status", running: false });
+    });
   }
 
   function summarize(id: string, events: SeamEvent[]): SessionSummary | undefined {
@@ -228,14 +300,14 @@ export function createServer(opts: ServerOptions) {
     }
 
     // session_start 在 startSession 内部就会写入，所以先准备好缓存，再登记 sessionId
-    const entry: Entry = { events: [], subscribers: new Set() };
+    const entry: Entry = { events: [], subscribers: new Set(), lang, pending: new Map() };
     const handle = startSession({
       task,
       workspace,
       ...resolved,
       lang,
       logDir: opts.logDir,
-      approve: denyAll(lang),
+      approve: webApprover(entry),
       ...liveCallbacks(entry),
     });
     entry.session = handle;
@@ -266,11 +338,38 @@ export function createServer(opts: ServerOptions) {
       entry.session = resumeSession(logPath(id)!, {
         ...resolved,
         lang,
-        approve: denyAll(lang),
+        approve: webApprover(entry),
         ...liveCallbacks(entry),
       });
     }
     track(entry, entry.session.send(text));
+    return json({ ok: true });
+  }
+
+  /** 用户对挂起请求的决定：批准（计划可带修改后的步骤）或拒绝（可带理由） */
+  async function respondApproval(id: string, toolCallId: string, req: Request): Promise<Response> {
+    const entry = entryOf(id);
+    if (!entry) return fail(404, "Session not found.");
+    const pending = entry.pending.get(toolCallId);
+    if (!pending) return fail(404, "No pending approval.");
+    const body = (await req.json().catch(() => ({}))) as { decision?: string; reason?: string; steps?: unknown };
+
+    if (body.decision === "deny") {
+      const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+      pending.resolve({ approved: false, reason: reason || DENIED_REASON[entry.lang], by: "user" });
+      return json({ ok: true });
+    }
+    if (body.decision !== "allow") return fail(400, "Decision must be allow or deny.");
+
+    if (pending.request.preview?.kind === "plan") {
+      const steps = Array.isArray(body.steps)
+        ? body.steps.filter((s): s is string => typeof s === "string" && s.trim() !== "").map((s) => s.trim())
+        : undefined;
+      if (steps && steps.length === 0) return fail(400, "A plan needs at least one step.");
+      pending.resolve(steps ? { approved: true, steps } : true);
+    } else {
+      pending.resolve(true);
+    }
     return json({ ok: true });
   }
 
@@ -291,6 +390,8 @@ export function createServer(opts: ServerOptions) {
         };
         entry.events.forEach((event) => send({ kind: "event", event }));
         send({ kind: "status", running: entry.session?.isRunning() ?? false });
+        // 重连时补发还挂着的请求，用户刷新页面不会丢掉确认框
+        entry.pending.forEach((p) => send({ kind: "approval", request: p.request }));
         entry.subscribers.add(send);
         unsubscribe = () => entry.subscribers.delete(send);
       },
@@ -352,6 +453,9 @@ export function createServer(opts: ServerOptions) {
       },
       "/api/sessions/:id/stream": { GET: api((req) => stream(req.params.id!)) },
       "/api/sessions/:id/messages": { POST: api((req) => sendMessage(req.params.id!, req)) },
+      "/api/sessions/:id/approvals/:toolCallId": {
+        POST: api((req) => respondApproval(req.params.id!, req.params.toolCallId!, req)),
+      },
       "/api/sessions/:id/stop": {
         POST: api((req) => {
           const session = entries.get(req.params.id!)?.session;

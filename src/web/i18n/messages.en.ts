@@ -34,7 +34,7 @@ export const en = {
   chooseFolder: "Choose folder…",
   typePath: "Type a path…",
   noProviders: "No API key found. Add one to .env and restart Seam.",
-  readOnlyHint: "Writing files and running commands are not available yet, so the agent can only read.",
+  readOnlyHint: "Writing files and running commands ask for your approval.",
   tipLabel: "Tip",
   /** 空白页随机显示一条：每条纠正一个关于 agent 的常见误解 */
   tips: [
@@ -55,6 +55,7 @@ export const en = {
 
   status: {
     running: "Running",
+    waiting: "Waiting for you",
     completed: "Completed",
     error: "Error",
     aborted: "Stopped",
@@ -75,6 +76,37 @@ export const en = {
     allowUser: "Approved by you",
     deny: "Denied",
     pending: "Waiting for the harness",
+    waitingUser: "Waiting for your decision",
+    byTimeout: "Denied after 10 minutes with no response",
+    byAborted: "Stopped before you answered",
+    boundary: "Blocked by the harness",
+    planRequired: "A plan is required first",
+    planDenied: "Plan denied",
+    notExecuted: "Not executed",
+    outsideWorkspace: (path: string) =>
+      `Blocked by the harness: “${path}” is outside this workspace, so the agent cannot access it.`,
+    planRequiredHint:
+      "The harness requires a plan before the agent writes files or runs commands. It has been told to propose one first.",
+    notExecutedHint: "The service restarted while this call was pending, so it never ran.",
+  },
+  approval: {
+    title: "The model's request",
+    paused: "Paused by the harness",
+    gate: "This is the model's request. The harness stopped it and is handing the decision to you.",
+    approve: "Approve",
+    deny: "Deny",
+    denyReason: "Reason for denying (optional, passed to the model)",
+    writeCreate: "Create file",
+    writeOverwrite: "Overwrite file",
+    lines: (added: number, removed: number) => `+${added} / −${removed} lines`,
+    commandWarning: "Commands run with your permissions and can reach outside the workspace.",
+    planHint: "Edit, remove, or add steps. The model will follow the plan you approve.",
+    addStep: "Add step",
+    removeStep: "Remove this step",
+    stepLabel: (n: number) => `Step ${n}`,
+  },
+  plan: {
+    stepCount: (n: number) => `${n} steps`,
   },
   result: "Result",
   resultError: "Error",

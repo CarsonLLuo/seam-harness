@@ -1,8 +1,9 @@
 import type { SessionSummary } from "../api";
 import { useI18n } from "../i18n/i18n";
 
-const DOT: Record<SessionSummary["status"], string> = {
+const DOT: Record<SessionSummary["status"] | "waiting", string> = {
   running: "bg-fact animate-pulse",
+  waiting: "bg-amber-500 animate-pulse",
   completed: "bg-fact",
   error: "bg-destructive",
   aborted: "bg-muted-foreground",
@@ -10,7 +11,7 @@ const DOT: Record<SessionSummary["status"], string> = {
   unknown: "bg-muted-foreground",
 };
 
-export function StatusBadge({ status }: { status: SessionSummary["status"] }) {
+export function StatusBadge({ status }: { status: SessionSummary["status"] | "waiting" }) {
   const { t } = useI18n();
   return (
     <span className="inline-flex shrink-0 items-center gap-1">

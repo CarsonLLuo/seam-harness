@@ -125,9 +125,10 @@ describe("sessions", () => {
     expect(events[0]!.type).toBe("session_start");
     expect(events.at(-1)!.type).toBe("session_end");
 
-    // 写文件被自动拒绝，理由用界面语言交给模型
+    // 没有批准的计划，写文件被 harness 拦下，理由用界面语言交给模型
     const denied = events.find((e) => e.type === "permission" && e.data.decision === "deny");
-    expect(denied?.type === "permission" && denied.data.reason).toContain("写文件");
+    expect(denied?.type === "permission" && denied.data.code).toBe("plan_required");
+    expect(denied?.type === "permission" && denied.data.reason).toContain("计划");
 
     // 系统提示词使用中文
     const first = events[0]!;
@@ -228,6 +229,132 @@ describe("sessions", () => {
       );
       expect(answers).toEqual(["one", "two", "three"]);
       expect(JSON.stringify(replies.received[2])).toContain("two"); // 恢复后带着前文
+    } finally {
+      srv.stop(true);
+      replies.stop();
+    }
+  });
+
+  test("the web interface approves a plan and a write through the stream", async () => {
+    const replies = startMockAnthropic([
+      { toolUse: { id: "p1", name: "propose_plan", input: { steps: ["保存 b.txt"], intent: "先说明计划" } } },
+      { toolUse: { id: "w1", name: "write_file", input: { path: "b.txt", content: "hi from test", intent: "保存" } } },
+      { text: "已保存。" },
+    ]);
+    const srv = createServer({
+      port: 0,
+      token: TOKEN,
+      logDir,
+      defaultWorkspace: ws,
+      resolveModel: () => ({ model: replies.model, apiKey: "test-key" }),
+      availableProviders: () => [{ name: "anthropic", models: ["claude-sonnet-5-5"], defaultModel: "claude-sonnet-5-5" }],
+    });
+    const url = `http://127.0.0.1:${srv.port}`;
+    const post = (path: string, body: object) =>
+      fetch(`${url}${path}`, {
+        method: "POST",
+        headers: { cookie: `seam_token=${TOKEN}`, origin: url, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+    try {
+      const start = await post("/api/sessions", { task: "把结果写进 b.txt", provider: "anthropic", lang: "zh" });
+      const { sessionId } = (await start.json()) as { sessionId: string };
+
+      const controller = new AbortController();
+      const res = await fetch(`${url}/api/sessions/${sessionId}/stream`, {
+        headers: { cookie: `seam_token=${TOKEN}` },
+        signal: controller.signal,
+      });
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      const approvals: { kind: string; toolCallId: string }[] = [];
+      let ended = false;
+      while (!ended) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split("\n\n");
+        buffer = chunks.pop()!;
+        for (const chunk of chunks) {
+          if (!chunk.startsWith("data: ")) continue;
+          const m = JSON.parse(chunk.slice(6));
+          if (m.kind === "approval") {
+            approvals.push({ kind: m.request.preview.kind, toolCallId: m.request.toolCallId });
+            const body =
+              m.request.preview.kind === "plan"
+                ? { decision: "allow", steps: ["保存 b.txt（用户修改）"] }
+                : { decision: "allow" };
+            const answer = await post(`/api/sessions/${sessionId}/approvals/${m.request.toolCallId}`, body);
+            expect(answer.status).toBe(200);
+          }
+          if (m.kind === "status" && !m.running) ended = true;
+        }
+      }
+      controller.abort();
+
+      expect(approvals.map((a) => a.kind)).toEqual(["plan", "write_file"]);
+      expect(await Bun.file(join(ws, "b.txt")).text()).toBe("hi from test");
+
+      const events = (await (
+        await fetch(`${url}/api/sessions/${sessionId}/events`, { headers: { cookie: `seam_token=${TOKEN}` } })
+      ).json()) as SeamEvent[];
+      // 修改后的计划进入日志，也就进入了下一次请求
+      expect(JSON.stringify(events)).toContain("保存 b.txt（用户修改）");
+      const planResult = events.find((e) => e.type === "tool_result" && e.data.name === "propose_plan");
+      expect(planResult?.type === "tool_result" && planResult.data.details).toMatchObject({
+        steps: ["保存 b.txt（用户修改）"],
+        edited: true,
+      });
+
+      // 已经处理过的请求不能再次提交
+      const again = await post(`/api/sessions/${sessionId}/approvals/${approvals[0]!.toolCallId}`, { decision: "deny" });
+      expect(again.status).toBe(404);
+    } finally {
+      srv.stop(true);
+      replies.stop();
+      rmSync(join(ws, "b.txt"), { force: true });
+    }
+  });
+  test("a pending approval times out", async () => {
+    const replies = startMockAnthropic([
+      { toolUse: { id: "p1", name: "propose_plan", input: { steps: ["写 b.txt"], intent: "plan" } } },
+      { text: "我先不动手。" },
+    ]);
+    const srv = createServer({
+      port: 0,
+      token: TOKEN,
+      logDir,
+      defaultWorkspace: ws,
+      resolveModel: () => ({ model: replies.model, apiKey: "test-key" }),
+      availableProviders: () => [{ name: "anthropic", models: ["claude-sonnet-5-5"], defaultModel: "claude-sonnet-5-5" }],
+      approvalTimeoutMs: 50,
+    });
+    const url = `http://127.0.0.1:${srv.port}`;
+    const events = async (id: string) =>
+      (await (
+        await fetch(`${url}/api/sessions/${id}/events`, { headers: { cookie: `seam_token=${TOKEN}` } })
+      ).json()) as SeamEvent[];
+    try {
+      const res = await fetch(`${url}/api/sessions`, {
+        method: "POST",
+        headers: { cookie: `seam_token=${TOKEN}`, origin: url, "content-type": "application/json" },
+        body: JSON.stringify({ task: "timeout", provider: "anthropic", lang: "zh" }),
+      });
+      const { sessionId } = (await res.json()) as { sessionId: string };
+      let all: SeamEvent[] = [];
+      for (let i = 0; i < 200; i++) {
+        all = await events(sessionId);
+        if (all.some((e) => e.type === "session_end")) break;
+        await Bun.sleep(20);
+      }
+      const denied = all.find(
+        (e) => e.type === "permission" && e.data.name === "propose_plan" && e.data.decision === "deny",
+      );
+      expect(denied?.type === "permission" && denied.data.by).toBe("timeout");
+      expect(denied?.type === "permission" && denied.data.reason).toContain("10 分钟");
+      expect(all.find((e) => e.type === "session_end")).toBeDefined();
     } finally {
       srv.stop(true);
       replies.stop();
