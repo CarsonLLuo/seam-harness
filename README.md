@@ -116,7 +116,7 @@ bun src/cli.ts run --provider anthropic --workspace examples/untested-functions 
 bun src/cli.ts replay <sessionId>
 ```
 
-Or use the local web UI, which shows each turn live and lets you replay past sessions step by step:
+Or use the local web UI: it shows each turn live, lets you ask follow-up questions in the same session (also after restarting Seam), and can replay past sessions step by step:
 
 ```bash
 bun run dev

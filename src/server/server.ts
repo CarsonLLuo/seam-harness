@@ -10,7 +10,8 @@ import { join } from "node:path";
 import type { SeamEvent } from "../events";
 import { readLog } from "../log";
 import type { ProviderName } from "../models";
-import { startSession, type Lang, type SessionHandle } from "../session";
+import { resumeSession, startSession, type Lang, type Session, type SessionOptions } from "../session";
+import type { FolderPicker } from "./folder-picker";
 
 export interface ServerOptions {
   port: number;
@@ -18,11 +19,20 @@ export interface ServerOptions {
   logDir: string;
   /** 新建任务时工作区输入框的默认值 */
   defaultWorkspace: string;
-  resolveModel: (provider: ProviderName) => { model: Model<Api>; apiKey: string };
-  availableProviders: () => ProviderName[];
+  resolveModel: (provider: ProviderName, modelId?: string) => { model: Model<Api>; apiKey: string };
+  /** 已配置 API Key 的供应商，以及它们可选的模型 */
+  availableProviders: () => ProviderInfo[];
+  /** 弹出系统的“选择文件夹”对话框；不传则不提供这个功能 */
+  pickFolder?: FolderPicker;
   /** 前端页面（Bun 的 HTML 导入）；测试时可以不传 */
   app?: unknown;
   development?: boolean;
+}
+
+export interface ProviderInfo {
+  name: ProviderName;
+  models: string[];
+  defaultModel: string;
 }
 
 export interface SessionSummary {
@@ -34,15 +44,26 @@ export interface SessionSummary {
   status: "running" | "completed" | "error" | "aborted" | "max_turns" | "unknown";
 }
 
-type StreamMessage = { kind: "event"; event: SeamEvent } | { kind: "delta"; turn: number; text: string } | { kind: "end" };
+/** 事件流里的消息。连接不会在运行结束时断开，以便接收后续追问产生的事件 */
+export type StreamMessage =
+  | { kind: "event"; event: SeamEvent }
+  | { kind: "delta"; turn: number; text: string }
+  | { kind: "status"; running: boolean };
 
-interface LiveSession {
-  handle: SessionHandle;
+/** 服务端打开过的会话：事件缓存 + 订阅者 + 可选的 agent（追问或新建时才创建） */
+interface Entry {
   events: SeamEvent[];
   subscribers: Set<(m: StreamMessage) => void>;
+  session?: Session;
 }
 
 const COOKIE = "seam_token";
+const RECENT_WORKSPACES = 8;
+
+const PICK_PROMPT: Record<Lang, string> = {
+  en: "Choose the workspace folder for the agent",
+  zh: "选择 agent 的工作区文件夹",
+};
 
 const DENY_REASON: Record<Lang, string> = {
   en: "This version of the interface cannot ask the user for approval yet, so writing files and running commands are denied. Continue without them.",
@@ -67,7 +88,7 @@ const json = (data: unknown, status = 200) => Response.json(data, { status });
 const fail = (status: number, error: string) => json({ error }, status);
 
 export function createServer(opts: ServerOptions) {
-  const live = new Map<string, LiveSession>();
+  const entries = new Map<string, Entry>();
 
   // ---- 安全校验 ----
   const allowedHosts = () => [`127.0.0.1:${server.port}`, `localhost:${server.port}`];
@@ -95,9 +116,41 @@ export function createServer(opts: ServerOptions) {
     return existsSync(p) ? p : undefined;
   }
 
+  /** 取得会话的缓存；第一次访问已结束的会话时从日志加载 */
+  function entryOf(id: string): Entry | undefined {
+    const existing = entries.get(id);
+    if (existing) return existing;
+    const path = logPath(id);
+    if (!path) return undefined;
+    const entry: Entry = { events: readLog(path), subscribers: new Set() };
+    entries.set(id, entry);
+    return entry;
+  }
+
+  const publish = (entry: Entry, m: StreamMessage) => entry.subscribers.forEach((fn) => fn(m));
+
+  /** 实时推送用的回调：事件进缓存并推给订阅者，文字增量只推送 */
+  function liveCallbacks(entry: Entry): Pick<SessionOptions, "onEvent" | "onDelta"> {
+    return {
+      onEvent: (event) => {
+        entry.events.push(event);
+        publish(entry, { kind: "event", event });
+      },
+      onDelta: (d) => publish(entry, { kind: "delta", ...d }),
+    };
+  }
+
+  // M2.5 还没有确认框：写入和执行命令一律拒绝，并把理由交给模型
+  const denyAll = (lang: Lang) => async () => ({ approved: false as const, reason: DENY_REASON[lang] });
+
+  function track(entry: Entry, run: Promise<unknown>) {
+    publish(entry, { kind: "status", running: true });
+    run.catch(() => undefined).finally(() => publish(entry, { kind: "status", running: false }));
+  }
+
   function summarize(id: string, events: SeamEvent[]): SessionSummary | undefined {
     const start = events.find((e) => e.type === "session_start");
-    if (!start || start.type !== "session_start") return undefined;
+    if (start?.type !== "session_start") return undefined;
     const end = events.findLast((e) => e.type === "session_end");
     return {
       id,
@@ -105,7 +158,11 @@ export function createServer(opts: ServerOptions) {
       provider: start.data.model.provider,
       model: start.data.model.id,
       startedAt: start.ts,
-      status: live.has(id) ? "running" : end?.type === "session_end" ? end.data.reason : "unknown",
+      status: entries.get(id)?.session?.isRunning()
+        ? "running"
+        : end?.type === "session_end"
+          ? end.data.reason
+          : "unknown",
     };
   }
 
@@ -116,7 +173,7 @@ export function createServer(opts: ServerOptions) {
       .map((f) => {
         const id = f.slice(0, -".jsonl".length);
         try {
-          return summarize(id, readLog(join(opts.logDir, f)));
+          return summarize(id, entries.get(id)?.events ?? readLog(join(opts.logDir, f)));
         } catch {
           return undefined; // 损坏的日志不影响列表
         }
@@ -125,10 +182,35 @@ export function createServer(opts: ServerOptions) {
       .sort((a, b) => b.startedAt - a.startedAt);
   }
 
+  /** 最近用过的工作区：从日志里按时间倒序取，去重，只保留仍然存在的文件夹 */
+  function recentWorkspaces(): string[] {
+    const seen = new Set<string>();
+    for (const s of listSessions()) {
+      const events = entries.get(s.id)?.events ?? readLog(join(opts.logDir, `${s.id}.jsonl`));
+      const start = events.find((e) => e.type === "session_start");
+      const ws = start?.type === "session_start" ? start.data.workspace : undefined;
+      if (ws && !seen.has(ws) && existsSync(ws)) seen.add(ws);
+      if (seen.size >= RECENT_WORKSPACES) break;
+    }
+    return [...seen];
+  }
+
+  async function pickFolder(req: Request): Promise<Response> {
+    if (!opts.pickFolder) return fail(501, "Choosing a folder is not available here.");
+    const body = (await req.json().catch(() => ({}))) as { lang?: Lang; current?: string };
+    try {
+      const path = await opts.pickFolder({ prompt: PICK_PROMPT[body.lang === "zh" ? "zh" : "en"], defaultPath: body.current });
+      return json(path ? { path } : { cancelled: true });
+    } catch (err) {
+      return fail(500, (err as Error).message);
+    }
+  }
+
   async function createSession(req: Request): Promise<Response> {
     const body = (await req.json().catch(() => ({}))) as {
       task?: string;
       provider?: ProviderName;
+      model?: string;
       workspace?: string;
       lang?: Lang;
     };
@@ -140,42 +222,62 @@ export function createServer(opts: ServerOptions) {
 
     let resolved;
     try {
-      resolved = opts.resolveModel(body.provider ?? "anthropic");
+      resolved = opts.resolveModel(body.provider ?? "anthropic", body.model || undefined);
     } catch (err) {
       return fail(400, (err as Error).message);
     }
 
-    const session: LiveSession = { handle: undefined as unknown as SessionHandle, events: [], subscribers: new Set() };
-    const publish = (m: StreamMessage) => session.subscribers.forEach((fn) => fn(m));
-    session.handle = startSession({
+    // session_start 在 startSession 内部就会写入，所以先准备好缓存，再登记 sessionId
+    const entry: Entry = { events: [], subscribers: new Set() };
+    const handle = startSession({
       task,
       workspace,
       ...resolved,
       lang,
       logDir: opts.logDir,
-      // M2 还没有确认框：写入和执行命令一律拒绝，并把理由交给模型
-      approve: async () => ({ approved: false, reason: DENY_REASON[lang] }),
-      onEvent: (event) => {
-        session.events.push(event);
-        publish({ kind: "event", event });
-      },
-      onDelta: (d) => publish({ kind: "delta", ...d }),
+      approve: denyAll(lang),
+      ...liveCallbacks(entry),
     });
-    live.set(session.handle.sessionId, session);
-    session.handle.done
-      .catch(() => undefined)
-      .finally(() => {
-        publish({ kind: "end" });
-        live.delete(session.handle.sessionId);
-      });
-    return json({ sessionId: session.handle.sessionId });
+    entry.session = handle;
+    entries.set(handle.sessionId, entry);
+    track(entry, handle.done);
+    return json({ sessionId: handle.sessionId });
   }
 
-  /** SSE：先补发已有事件，运行中的会话再持续推送，结束时发 end */
+  async function sendMessage(id: string, req: Request): Promise<Response> {
+    const entry = entryOf(id);
+    if (!entry) return fail(404, "Session not found.");
+    if (entry.session?.isRunning()) return fail(409, "The session is still running.");
+    const body = (await req.json().catch(() => ({}))) as { text?: string };
+    const text = body.text?.trim();
+    if (!text) return fail(400, "Message is empty.");
+
+    if (!entry.session) {
+      // 服务重启后第一次追问：从日志恢复对话历史
+      const start = entry.events.find((e) => e.type === "session_start");
+      if (start?.type !== "session_start") return fail(400, "The log has no session_start event.");
+      let resolved;
+      try {
+        resolved = opts.resolveModel(start.data.model.provider as ProviderName, start.data.model.id);
+      } catch (err) {
+        return fail(400, (err as Error).message);
+      }
+      const lang = start.data.lang ?? "en";
+      entry.session = resumeSession(logPath(id)!, {
+        ...resolved,
+        lang,
+        approve: denyAll(lang),
+        ...liveCallbacks(entry),
+      });
+    }
+    track(entry, entry.session.send(text));
+    return json({ ok: true });
+  }
+
+  /** SSE：先补发已有事件和当前状态，之后持续推送 */
   function stream(id: string): Response {
-    const running = live.get(id);
-    const path = logPath(id);
-    if (!running && !path) return fail(404, "Session not found.");
+    const entry = entryOf(id);
+    if (!entry) return fail(404, "Session not found.");
 
     let unsubscribe = () => {};
     const body = new ReadableStream<string>({
@@ -183,19 +285,14 @@ export function createServer(opts: ServerOptions) {
         const send = (m: StreamMessage) => {
           try {
             controller.enqueue(`data: ${JSON.stringify(m)}\n\n`);
-            if (m.kind === "end") controller.close();
           } catch {
             unsubscribe();
           }
         };
-        if (running) {
-          running.events.forEach((event) => send({ kind: "event", event }));
-          running.subscribers.add(send);
-          unsubscribe = () => running.subscribers.delete(send);
-        } else {
-          readLog(path!).forEach((event) => send({ kind: "event", event }));
-          send({ kind: "end" });
-        }
+        entry.events.forEach((event) => send({ kind: "event", event }));
+        send({ kind: "status", running: entry.session?.isRunning() ?? false });
+        entry.subscribers.add(send);
+        unsubscribe = () => entry.subscribers.delete(send);
       },
       cancel() {
         unsubscribe();
@@ -234,25 +331,32 @@ export function createServer(opts: ServerOptions) {
       "/app": (opts.app as Response | undefined) ?? new Response("The web UI is not bundled.", { status: 404 }),
       "/api/config": {
         GET: api(() =>
-          json({ defaultWorkspace: opts.defaultWorkspace, providers: opts.availableProviders() }),
+          json({
+            defaultWorkspace: opts.defaultWorkspace,
+            providers: opts.availableProviders(),
+            canPickFolder: Boolean(opts.pickFolder),
+          }),
         ),
       },
+      "/api/workspaces": { GET: api(() => json(recentWorkspaces())) },
+      "/api/pick-folder": { POST: api(pickFolder) },
       "/api/sessions": {
         GET: api(() => json(listSessions())),
         POST: api(createSession),
       },
       "/api/sessions/:id/events": {
         GET: api((req) => {
-          const path = logPath(req.params.id!);
-          return path ? json(readLog(path)) : fail(404, "Session not found.");
+          const e = entryOf(req.params.id!);
+          return e ? json(e.events) : fail(404, "Session not found.");
         }),
       },
       "/api/sessions/:id/stream": { GET: api((req) => stream(req.params.id!)) },
+      "/api/sessions/:id/messages": { POST: api((req) => sendMessage(req.params.id!, req)) },
       "/api/sessions/:id/stop": {
         POST: api((req) => {
-          const running = live.get(req.params.id!);
-          if (!running) return fail(404, "Session is not running.");
-          running.handle.abort();
+          const session = entries.get(req.params.id!)?.session;
+          if (!session?.isRunning()) return fail(404, "Session is not running.");
+          session.abort();
           return json({ ok: true });
         }),
       },

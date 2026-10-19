@@ -2,21 +2,56 @@ import type { Messages } from "./messages.en";
 
 export const zh: Messages = {
   appName: "Seam",
-  newTask: "新任务",
-  sessions: "会话",
-  noSessions: "还没有会话。",
+  newSession: "新会话",
   language: "English",
-  selectSession: "在左侧选择一个会话，或者开始一个新任务。",
+  languageHint: "切换为英文",
+  noSessions: "还没有会话。",
+  collapseSidebar: "收起侧栏",
+  expandSidebar: "展开侧栏",
+  theme: {
+    label: "主题",
+    system: "跟随系统",
+    light: "浅色",
+    dark: "深色",
+  },
+  groups: {
+    today: "今天",
+    yesterday: "昨天",
+    week: "过去 7 天",
+    older: "更早",
+  },
 
-  task: "任务",
-  taskPlaceholder: "描述你希望 agent 在这个文件夹里做什么……",
-  provider: "模型供应商",
-  noProviders: "没有找到 API Key。请设置 ANTHROPIC_API_KEY 或 DEEPSEEK_API_KEY，然后重启 Seam。",
-  workspace: "工作区文件夹",
-  workspaceHint: "agent 只能读取这个文件夹里的内容。写文件和执行命令暂不可用。",
-  start: "开始",
-  starting: "正在启动……",
+  welcomeTitle: "想让 agent 做什么？",
+  welcomeHint: "Seam 会让你看到 agent 实际读了什么、请求做什么，以及哪些只是它自己的说法。",
+  composerPlaceholder: "描述你希望在这个文件夹里完成的任务……",
+  followUpPlaceholder: "继续追问……",
+  replayingPlaceholder: "关闭回放后才能发送消息。",
+  send: "发送",
   stop: "停止",
+  provider: "模型供应商",
+  model: "模型",
+  workspace: "工作区文件夹",
+  recentWorkspaces: "最近用过的文件夹",
+  chooseFolder: "选择文件夹……",
+  typePath: "输入路径……",
+  noProviders: "没有找到 API Key。请在 .env 里填写后重启 Seam。",
+  readOnlyHint: "写文件和执行命令暂不可用，agent 目前只能读取。",
+  tipLabel: "小提示",
+  tips: [
+    "agent 只知道它实际读过的内容，没打开过的文件它并不知道。",
+    "紫色虚线旁的内容是模型自己的说法，不一定是它这样做的真实原因。",
+    "模型本身没有记忆：每一轮，harness 都会把之前的对话重新发给它。",
+    "模型只能“请求”读文件或执行命令，真正执行并决定是否允许的是 harness。",
+    "点开某一轮的“已发送 N 条消息”，可以看到这一轮真实发给模型的全部内容。",
+    "回放可以一步步重现会话，看看 agent 是在哪一步做出每个判断的。",
+    "发给模型的内容里，有些不是你写的，而是 harness 在每次请求时自动加上的。",
+  ],
+  examplesLabel: "试试这些",
+  examples: [
+    "找出所有没有测试的导出函数，列出它们所在的文件。",
+    "总结这个文件夹里每个文件分别是做什么的。",
+    "列出这个项目用到的依赖，并说明每个依赖的用途。",
+  ],
 
   status: {
     running: "运行中",
@@ -28,10 +63,10 @@ export const zh: Messages = {
   },
 
   turn: (n) => `第 ${n} 轮`,
-  request: (messages, tools) => `已发送请求：${messages} 条消息，${tools} 个工具`,
-  viewRaw: "原始内容",
-  streaming: "正在输出……",
+  request: (messages, tools) => `已发送 ${messages} 条消息 · ${tools} 个工具`,
+  thinking: "正在等待模型……",
   tokens: (input, output) => `输入 ${input} 个 token · 输出 ${output} 个`,
+  runEnded: (status, seconds) => `${status} · ${seconds} 秒`,
 
   modelSays: "模型说：",
   intentMissing: "（模型没有给出理由）",
@@ -39,11 +74,11 @@ export const zh: Messages = {
     allowAuto: "自动放行",
     allowUser: "你已批准",
     deny: "已拒绝",
+    pending: "等待 harness 处理",
   },
-  result: "结果：",
-  resultError: "出错：",
-  answer: "回答",
-  end: (status, seconds) => `${status}，用时 ${seconds} 秒`,
+  result: "结果",
+  resultError: "出错",
+  viewRaw: "查看原始记录",
 
   source: {
     harness: "由 harness 记录",
@@ -52,7 +87,8 @@ export const zh: Messages = {
   },
 
   replay: {
-    label: "回放",
+    toggle: "回放",
+    exit: "退出回放",
     step: (i, n) => `第 ${i} 步，共 ${n} 步`,
     first: "第一步",
     prev: "上一步",
@@ -61,12 +97,20 @@ export const zh: Messages = {
   },
 
   raw: {
+    toggle: "原始记录",
     title: "原始记录",
     close: "关闭",
+    empty: "点击某一轮或某次工具调用的“查看原始记录”，就能看到实际发出或返回的内容。",
+  },
+
+  unauthorized: {
+    title: "需要重新打开访问链接",
+    body: "这个浏览器里的访问令牌和正在运行的 Seam 对不上，通常是因为 Seam 重启过。请重新打开终端里打印的链接。",
   },
 
   errors: {
-    load: "无法加载这个会话。",
     start: "无法启动任务。",
+    send: "无法发送消息。",
+    pickFolder: "无法打开选择文件夹的窗口。",
   },
 };

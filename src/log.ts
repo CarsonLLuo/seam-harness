@@ -12,8 +12,14 @@ export class EventLog {
     readonly path: string,
     readonly sessionId: string,
     private readonly onRecord?: (event: SeamEvent) => void,
+    /** 恢复会话时，从日志里最后一条事件的序号和轮次接着写 */
+    resume?: { seq: number; turn: number },
   ) {
     mkdirSync(dirname(path), { recursive: true });
+    if (resume) {
+      this.seq = resume.seq;
+      this.turn = resume.turn;
+    }
   }
 
   record = <K extends EventType>(type: K, source: Source, data: EventPayloads[K]): void => {

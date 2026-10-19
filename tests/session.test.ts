@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readLog } from "../src/log";
 import { reconstruct } from "../src/replay";
-import { runSession } from "../src/session";
+import { resumeSession, runSession, startSession } from "../src/session";
 import { startMockAnthropic } from "./mock-anthropic";
 
 let ws: string;
@@ -90,6 +90,64 @@ test("stops after the maximum number of turns", async () => {
     expect(result.reason).toBe("max_turns");
     expect(result.finalText).toBe(""); // 被截断时没有最终回答，不能把工具输出当成回答
     expect(reconstruct(readLog(result.logPath)).turns).toHaveLength(2);
+  } finally {
+    mock.stop();
+  }
+});
+
+test("a session can be continued with follow-up messages, and resumed from its log", async () => {
+  const mock = startMockAnthropic([{ text: "first answer" }, { text: "second answer" }, { text: "third answer" }]);
+  try {
+    const session = startSession({
+      task: "first question",
+      workspace: ws,
+      model: mock.model,
+      apiKey: "test-key",
+      logDir,
+      approve: async () => true,
+    });
+    expect((await session.done).finalText).toBe("first answer");
+
+    const second = await session.send("second question");
+    expect(second.finalText).toBe("second answer");
+    expect(second.logPath).toBe(session.logPath);
+
+    // 第二次请求带着完整的前文。pi 会在每条用户消息后插入一条只带 output_config 的 system 消息，这里不计入
+    const roles = (body: unknown) =>
+      (body as { messages: { role: string }[] }).messages.map((m) => m.role).filter((r) => r !== "system");
+    expect(roles(mock.received[1])).toEqual(["user", "assistant", "user"]);
+
+    // 模拟服务重启：只凭日志恢复，再追问一次
+    const resumed = resumeSession(session.logPath, { model: mock.model, apiKey: "test-key", approve: async () => true });
+    const third = await resumed.send("third question");
+    expect(third.finalText).toBe("third answer");
+    expect(roles(mock.received[2])).toEqual(["user", "assistant", "user", "assistant", "user"]);
+    expect(JSON.stringify(mock.received[2])).toContain("second answer");
+
+    const events = readLog(session.logPath);
+    expect(events.map((e) => e.seq)).toEqual(events.map((_, i) => i + 1)); // 序号连续
+    expect(events.filter((e) => e.type === "session_end")).toHaveLength(3);
+    const view = reconstruct(events);
+    expect(view.turns.map((t) => t.turn)).toEqual([1, 2, 3]);
+    expect(view.userMessages).toHaveLength(3);
+  } finally {
+    mock.stop();
+  }
+});
+
+test("sending while a run is in progress is rejected", async () => {
+  const mock = startMockAnthropic([{ text: "done" }]);
+  try {
+    const session = startSession({
+      task: "q",
+      workspace: ws,
+      model: mock.model,
+      apiKey: "test-key",
+      logDir,
+      approve: async () => true,
+    });
+    await expect(session.send("too early")).rejects.toThrow(/already running/);
+    await session.done;
   } finally {
     mock.stop();
   }

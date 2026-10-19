@@ -20,6 +20,8 @@ export interface EventPayloads {
     model: { provider: string; id: string; baseUrl: string };
     systemPrompt: string;
     tools: string[];
+    /** 界面语言；M2.5 之前的日志没有这个字段 */
+    lang?: "en" | "zh";
   };
   user_message: { content: unknown };
   turn_start: Record<string, never>;
@@ -45,6 +47,7 @@ export interface EventPayloads {
     durationMs?: number;
   };
   turn_end: Record<string, never>;
+  /** 一次运行结束。会话可以继续追问，所以一个日志里可能有多条 */
   session_end: { reason: "completed" | "error" | "aborted" | "max_turns"; durationMs: number; errorMessage?: string };
 }
 

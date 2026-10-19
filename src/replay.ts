@@ -9,10 +9,14 @@ export interface ReplayToolCall {
 
 export interface ReplayTurn {
   turn: number;
+  /** 这一轮开头的用户消息（第一轮是任务，之后是追问）；模型接着工具结果继续时没有 */
+  user?: EventPayloads["user_message"];
   /** 本轮真实发出的请求；遇到重试时可能有多次 */
   requests: EventPayloads["http_request"][];
   assistant?: EventPayloads["assistant_message"];
   toolCalls: ReplayToolCall[];
+  /** 如果一次运行在这一轮结束，这里是结束信息 */
+  end?: EventPayloads["session_end"];
 }
 
 export interface ReplaySession {
@@ -44,6 +48,7 @@ export function reconstruct(events: SeamEvent[]): ReplaySession {
         break;
       case "user_message":
         session.userMessages.push(e.data);
+        turnOf(e.turn).user = e.data;
         break;
       case "turn_start":
         turnOf(e.turn);
@@ -72,6 +77,7 @@ export function reconstruct(events: SeamEvent[]): ReplaySession {
       }
       case "session_end":
         session.end = e.data;
+        if (e.turn > 0) turnOf(e.turn).end = e.data;
         break;
     }
   }

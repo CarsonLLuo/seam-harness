@@ -116,7 +116,7 @@ bun src/cli.ts run --provider anthropic --workspace examples/untested-functions 
 bun src/cli.ts replay <sessionId>
 ```
 
-也可以使用本地 Web 界面：实时显示每一轮，也能逐步回放过去的会话：
+也可以使用本地 Web 界面：实时显示每一轮，可以在同一个会话里继续追问（重启 Seam 之后也可以），也能逐步回放过去的会话：
 
 ```bash
 bun run dev

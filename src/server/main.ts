@@ -4,8 +4,9 @@
 import { randomBytes } from "node:crypto";
 import app from "../web/index.html";
 import { loadProjectEnv } from "../env";
-import { resolveModel, type ProviderName } from "../models";
+import { defaultModelId, listModels, resolveModel, type ProviderName } from "../models";
 import { defaultLogDir } from "../session";
+import { pickFolderWithOsascript } from "./folder-picker";
 import { createServer } from "./server";
 
 loadProjectEnv();
@@ -19,7 +20,7 @@ const server = createServer({
   token,
   logDir: defaultLogDir(),
   defaultWorkspace: process.cwd(),
-  resolveModel: (provider) => resolveModel(provider),
+  resolveModel,
   availableProviders: () =>
     PROVIDERS.filter((p) => {
       try {
@@ -28,7 +29,8 @@ const server = createServer({
       } catch {
         return false;
       }
-    }),
+    }).map((name) => ({ name, models: listModels(name), defaultModel: defaultModelId(name) })),
+  pickFolder: process.platform === "darwin" ? pickFolderWithOsascript : undefined,
   app,
   development: process.env.NODE_ENV !== "production",
 });

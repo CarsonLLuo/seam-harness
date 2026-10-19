@@ -30,7 +30,7 @@ beforeAll(() => {
     logDir,
     defaultWorkspace: ws,
     resolveModel: () => ({ model: mock.model, apiKey: "test-key" }),
-    availableProviders: () => ["anthropic"],
+    availableProviders: () => [{ name: "anthropic", models: ["claude-sonnet-5-5"], defaultModel: "claude-sonnet-5-5" }],
   });
   base = `http://127.0.0.1:${server.port}`;
 });
@@ -46,6 +46,38 @@ const authed = (init: RequestInit = {}): RequestInit => ({
   ...init,
   headers: { cookie: `seam_token=${TOKEN}`, origin: base, ...(init.headers ?? {}) },
 });
+
+const postJson = (path: string, body: object) =>
+  fetch(`${base}${path}`, authed({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
+
+/** 读事件流，直到收到第 runs 次“空闲”状态为止（流本身不会关闭） */
+async function readStream(id: string, runs = 1) {
+  const controller = new AbortController();
+  const res = await fetch(`${base}/api/sessions/${id}/stream`, authed({ signal: controller.signal }));
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  const messages: any[] = [];
+  let buffer = "";
+  let ended = 0;
+  let finished = false;
+  while (!finished) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const chunks = buffer.split("\n\n");
+    buffer = chunks.pop()!;
+    for (const chunk of chunks) {
+      if (!chunk.startsWith("data: ")) continue;
+      const m = JSON.parse(chunk.slice(6));
+      messages.push(m);
+      if (m.kind === "event" && m.event.type === "session_end") ended++;
+      // 收到足够多次运行结束后的“空闲”状态就停止读取
+      if (m.kind === "status" && !m.running && ended >= runs) finished = true;
+    }
+  }
+  controller.abort();
+  return messages;
+}
 
 describe("security", () => {
   test("the entry link sets an HttpOnly, SameSite=Strict cookie only with the right token", async () => {
@@ -83,21 +115,12 @@ describe("security", () => {
 
 describe("sessions", () => {
   test("start a task, stream it to the end, then list and reload it", async () => {
-    const start = await fetch(
-      `${base}/api/sessions`,
-      authed({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ task: "Find banana", lang: "zh" }) }),
-    );
+    const start = await postJson("/api/sessions", { task: "Find banana", lang: "zh" });
     expect(start.status).toBe(200);
     const { sessionId } = (await start.json()) as { sessionId: string };
 
-    // SSE：读到 end 为止
-    const res = await fetch(`${base}/api/sessions/${sessionId}/stream`, authed());
-    const text = await res.text();
-    const messages = text
-      .split("\n\n")
-      .filter((chunk) => chunk.startsWith("data: "))
-      .map((chunk) => JSON.parse(chunk.slice(6)));
-    expect(messages.at(-1)).toEqual({ kind: "end" });
+    const messages = await readStream(sessionId);
+    expect(messages.at(-1)).toEqual({ kind: "status", running: false });
     const events = messages.filter((m) => m.kind === "event").map((m) => m.event as SeamEvent);
     expect(events[0]!.type).toBe("session_start");
     expect(events.at(-1)!.type).toBe("session_end");
@@ -118,11 +141,97 @@ describe("sessions", () => {
     expect(reloaded).toEqual(events);
   });
 
-  test("rejects an empty task and a missing workspace", async () => {
+  test("a new session can use a specific model", async () => {
+    const asked: (string | undefined)[] = [];
+    const replies = startMockAnthropic([{ text: "ok" }]);
+    const srv = createServer({
+      port: 0,
+      token: TOKEN,
+      logDir,
+      defaultWorkspace: ws,
+      resolveModel: (_provider, modelId) => {
+        asked.push(modelId);
+        if (modelId === "no-such-model") throw new Error("Model not found");
+        return { model: replies.model, apiKey: "test-key" };
+      },
+      availableProviders: () => [{ name: "anthropic", models: ["claude-haiku-5-5"], defaultModel: "claude-haiku-5-5" }],
+    });
+    const url = `http://127.0.0.1:${srv.port}`;
     const post = (body: object) =>
-      fetch(`${base}/api/sessions`, authed({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
-    expect((await post({ task: "  " })).status).toBe(400);
-    expect((await post({ task: "x", workspace: "/no/such/folder" })).status).toBe(400);
+      fetch(`${url}/api/sessions`, {
+        method: "POST",
+        headers: { cookie: `seam_token=${TOKEN}`, origin: url, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    try {
+      expect((await post({ task: "x", provider: "anthropic", model: "claude-haiku-5-5" })).status).toBe(200);
+      expect((await post({ task: "x", provider: "anthropic", model: "no-such-model" })).status).toBe(400);
+      expect(asked).toEqual(["claude-haiku-5-5", "no-such-model"]);
+    } finally {
+      srv.stop(true);
+      replies.stop();
+    }
+  });
+
+  test("rejects an empty task and a missing workspace", async () => {
+    expect((await postJson("/api/sessions", { task: "  " })).status).toBe(400);
+    expect((await postJson("/api/sessions", { task: "x", workspace: "/no/such/folder" })).status).toBe(400);
+  });
+
+  test("follow-up messages continue the session, also after a server restart", async () => {
+    const replies = startMockAnthropic([{ text: "one" }, { text: "two" }, { text: "three" }]);
+    const make = () =>
+      createServer({
+        port: 0,
+        token: TOKEN,
+        logDir,
+        defaultWorkspace: ws,
+        resolveModel: () => ({ model: replies.model, apiKey: "test-key" }),
+        availableProviders: () => [{ name: "anthropic", models: ["claude-sonnet-5-5"], defaultModel: "claude-sonnet-5-5" }],
+      });
+    let srv = make();
+    const url = () => `http://127.0.0.1:${srv.port}`;
+    const post = (path: string, body: object) =>
+      fetch(`${url()}${path}`, {
+        method: "POST",
+        headers: { cookie: `seam_token=${TOKEN}`, origin: url(), "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    const events = async (id: string) =>
+      (await (await fetch(`${url()}/api/sessions/${id}/events`, { headers: { cookie: `seam_token=${TOKEN}` } })).json()) as SeamEvent[];
+    const waitForRuns = async (id: string, n: number) => {
+      for (let i = 0; i < 100; i++) {
+        if ((await events(id)).filter((e) => e.type === "session_end").length >= n) return;
+        await Bun.sleep(20);
+      }
+      throw new Error("timed out");
+    };
+
+    try {
+      const { sessionId } = (await (await post("/api/sessions", { task: "first" })).json()) as { sessionId: string };
+      await waitForRuns(sessionId, 1);
+
+      expect((await post(`/api/sessions/${sessionId}/messages`, { text: "second" })).status).toBe(200);
+      // 运行中再发会被拒绝
+      expect((await post(`/api/sessions/${sessionId}/messages`, { text: "too early" })).status).toBe(409);
+      await waitForRuns(sessionId, 2);
+
+      // 重启服务：新实例只能从日志恢复
+      srv.stop(true);
+      srv = make();
+      expect((await post(`/api/sessions/${sessionId}/messages`, { text: "third" })).status).toBe(200);
+      await waitForRuns(sessionId, 3);
+
+      const all = await events(sessionId);
+      const answers = all.flatMap((e) =>
+        e.type === "assistant_message" ? (e.data.content as { text?: string }[]).map((c) => c.text) : [],
+      );
+      expect(answers).toEqual(["one", "two", "three"]);
+      expect(JSON.stringify(replies.received[2])).toContain("two"); // 恢复后带着前文
+    } finally {
+      srv.stop(true);
+      replies.stop();
+    }
   });
 });
 
@@ -134,5 +243,56 @@ describe("replay steps", () => {
     expect(steps).toEqual([0, 1, 2, 5]);
     expect(eventsAtStep(events, steps, 2).map((e) => e.type)).toEqual(["session_start", "turn_start", "http_request"]);
     expect(eventsAtStep(events, steps, 99)).toHaveLength(6);
+  });
+});
+
+describe("workspaces", () => {
+  test("recent workspaces come from session logs, newest first, without duplicates", async () => {
+    const res = await fetch(`${base}/api/workspaces`, authed());
+    const list = (await res.json()) as string[];
+    expect(list.length).toBeGreaterThan(0);
+    expect(new Set(list).size).toBe(list.length);
+  });
+
+  test("the folder picker returns the chosen path, or nothing when cancelled", async () => {
+    const picks: (string | null)[] = ["/tmp/chosen", null];
+    const prompts: string[] = [];
+    const srv = createServer({
+      port: 0,
+      token: TOKEN,
+      logDir,
+      defaultWorkspace: ws,
+      resolveModel: () => ({ model: mock.model, apiKey: "test-key" }),
+      availableProviders: () => [{ name: "anthropic", models: ["claude-sonnet-5-5"], defaultModel: "claude-sonnet-5-5" }],
+      pickFolder: async ({ prompt }) => {
+        prompts.push(prompt);
+        return picks.shift() ?? null;
+      },
+    });
+    const url = `http://127.0.0.1:${srv.port}`;
+    const pick = (headers: Record<string, string> = {}) =>
+      fetch(`${url}/api/pick-folder`, {
+        method: "POST",
+        headers: { cookie: `seam_token=${TOKEN}`, origin: url, "content-type": "application/json", ...headers },
+        body: JSON.stringify({ lang: "zh", current: ws }),
+      });
+    try {
+      const config = (await (await fetch(`${url}/api/config`, { headers: { cookie: `seam_token=${TOKEN}` } })).json()) as {
+        canPickFolder: boolean;
+      };
+      expect(config.canPickFolder).toBe(true);
+      expect(await (await pick()).json()).toEqual({ path: "/tmp/chosen" });
+      expect(await (await pick()).json()).toEqual({ cancelled: true });
+      expect(prompts[0]).toContain("工作区"); // 对话框标题使用界面语言
+      // 其他网页不能替用户弹出对话框
+      expect((await pick({ origin: "https://evil.example" })).status).toBe(403);
+    } finally {
+      srv.stop(true);
+    }
+  });
+
+  test("without a folder picker the endpoint says it is unavailable", async () => {
+    const res = await fetch(`${base}/api/pick-folder`, authed({ method: "POST" }));
+    expect(res.status).toBe(501);
   });
 });

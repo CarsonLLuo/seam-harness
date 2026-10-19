@@ -1,21 +1,57 @@
 // 界面上的所有文字都在这里，组件里不直接写字符串。中文版见 messages.zh.ts，两边的 key 必须一致。
 export const en = {
   appName: "Seam",
-  newTask: "New task",
-  sessions: "Sessions",
-  noSessions: "No sessions yet.",
+  newSession: "New session",
   language: "中文",
-  selectSession: "Pick a session on the left, or start a new task.",
+  languageHint: "Switch to Chinese",
+  noSessions: "No sessions yet.",
+  collapseSidebar: "Collapse sidebar",
+  expandSidebar: "Expand sidebar",
+  theme: {
+    label: "Theme",
+    system: "System",
+    light: "Light",
+    dark: "Dark",
+  },
+  groups: {
+    today: "Today",
+    yesterday: "Yesterday",
+    week: "Previous 7 days",
+    older: "Older",
+  },
 
-  task: "Task",
-  taskPlaceholder: "Describe what the agent should do in this folder…",
-  provider: "Model provider",
-  noProviders: "No API key found. Set ANTHROPIC_API_KEY or DEEPSEEK_API_KEY and restart Seam.",
-  workspace: "Workspace folder",
-  workspaceHint: "The agent can only read inside this folder. Writing files and running commands are not available yet.",
-  start: "Start",
-  starting: "Starting…",
+  welcomeTitle: "What should the agent do?",
+  welcomeHint: "Seam shows what the agent actually reads, what it asks to do, and what is only its own account.",
+  composerPlaceholder: "Describe a task for this folder…",
+  followUpPlaceholder: "Ask a follow-up…",
+  replayingPlaceholder: "Turn off replay to send a message.",
+  send: "Send",
   stop: "Stop",
+  provider: "Model provider",
+  model: "Model",
+  workspace: "Workspace folder",
+  recentWorkspaces: "Recent folders",
+  chooseFolder: "Choose folder…",
+  typePath: "Type a path…",
+  noProviders: "No API key found. Add one to .env and restart Seam.",
+  readOnlyHint: "Writing files and running commands are not available yet, so the agent can only read.",
+  tipLabel: "Tip",
+  /** 空白页随机显示一条：每条纠正一个关于 agent 的常见误解 */
+  tips: [
+    "The agent only knows what it has actually read. Files it never opened are invisible to it.",
+    "Text next to the purple dashed line is the model's own account. It is not necessarily the real reason it acted.",
+    "The model has no memory of its own: every turn, the harness sends the earlier conversation to it again.",
+    "The model can only ask to read files or run commands. The harness is what carries them out and decides what is allowed.",
+    "Click “N messages sent” on a turn to see everything that was actually sent to the model.",
+    "Replay lets you step through a session to see at which point the agent made each decision.",
+    "Some of what is sent to the model was not written by you: the harness adds content to every request.",
+  ],
+  examplesLabel: "Try one of these",
+  examples: [
+    "Find all exported functions that have no tests, and list them with their files.",
+    "Summarize what each file in this folder is for.",
+    "List the dependencies this project uses and explain what each one does.",
+  ],
 
   status: {
     running: "Running",
@@ -27,10 +63,10 @@ export const en = {
   },
 
   turn: (n: number) => `Turn ${n}`,
-  request: (messages: number, tools: number) => `Request sent: ${messages} messages, ${tools} tools`,
-  viewRaw: "Raw",
-  streaming: "Writing…",
+  request: (messages: number, tools: number) => `${messages} messages · ${tools} tools sent`,
+  thinking: "Waiting for the model…",
   tokens: (input: number, output: number) => `${input} tokens in · ${output} out`,
+  runEnded: (status: string, seconds: string) => `${status} · ${seconds} s`,
 
   modelSays: "The model says:",
   intentMissing: "(the model gave no reason)",
@@ -38,11 +74,11 @@ export const en = {
     allowAuto: "Allowed automatically",
     allowUser: "Approved by you",
     deny: "Denied",
+    pending: "Waiting for the harness",
   },
-  result: "Result:",
-  resultError: "Error:",
-  answer: "Answer",
-  end: (status: string, seconds: string) => `${status} in ${seconds} s`,
+  result: "Result",
+  resultError: "Error",
+  viewRaw: "View raw record",
 
   source: {
     harness: "Recorded by the harness",
@@ -51,7 +87,8 @@ export const en = {
   },
 
   replay: {
-    label: "Replay",
+    toggle: "Replay",
+    exit: "Exit replay",
     step: (i: number, n: number) => `Step ${i} of ${n}`,
     first: "First step",
     prev: "Previous step",
@@ -60,13 +97,21 @@ export const en = {
   },
 
   raw: {
+    toggle: "Raw records",
     title: "Raw record",
     close: "Close",
+    empty: "Click “View raw record” on a turn or tool call to see exactly what was sent or returned.",
+  },
+
+  unauthorized: {
+    title: "Seam needs a new access link",
+    body: "The access token in this browser no longer matches the running Seam, usually because Seam was restarted. Open the link printed in the terminal again.",
   },
 
   errors: {
-    load: "Could not load this session.",
     start: "Could not start the task.",
+    send: "Could not send the message.",
+    pickFolder: "Could not open the folder picker.",
   },
 };
 

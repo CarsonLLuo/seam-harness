@@ -1,18 +1,48 @@
 import { useCallback, useEffect, useState } from "react";
-import { getConfig, listSessions, type Config, type SessionSummary } from "./api";
-import { NewTask } from "./components/NewTask";
-import { RawPanel } from "./components/RawPanel";
-import { SessionView } from "./components/SessionView";
-import { Sidebar } from "./components/Sidebar";
+import { ApiError, getConfig, listSessions, type Config, type SessionSummary } from "./api";
 import { useI18n } from "./i18n/i18n";
+import { NewChat, SessionChat } from "./components/ChatView";
+import { RawPanel } from "./components/RawPanel";
+import { Sidebar } from "./components/Sidebar";
+import { initialSelection, loadLastView, saveLastView } from "./startup";
+import { applyTheme, loadThemePref, THEME_STORAGE_KEY, type ThemePref } from "./theme";
+
+const SIDEBAR_KEY = "seam.sidebarCollapsed";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 export function App() {
   const { t } = useI18n();
   const [config, setConfig] = useState<Config | null>(null);
+  const [unauthorized, setUnauthorized] = useState(false);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
-  const [composing, setComposing] = useState(true);
-  const [raw, setRaw] = useState<unknown | null>(null);
+  const [rawOpen, setRawOpen] = useState(false);
+  const [raw, setRaw] = useState<unknown>(undefined);
+  /** 拿到会话列表、决定好打开哪个会话之前不渲染主区域，避免先闪一下新会话页 */
+  const [ready, setReady] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_KEY) === "1");
+  const [theme, setTheme] = useState<ThemePref>(loadThemePref);
+
+  useEffect(() => applyTheme(theme), [theme]);
+
+  const toggleCollapsed = useCallback(() => {
+    setCollapsed((v) => {
+      localStorage.setItem(SIDEBAR_KEY, v ? "0" : "1");
+      return !v;
+    });
+  }, []);
+
+  // ⌘B / Ctrl+B 收起或展开侧栏
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        toggleCollapsed();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [toggleCollapsed]);
 
   const refresh = useCallback(() => {
     listSessions().then(setSessions).catch(() => undefined);
@@ -20,51 +50,77 @@ export function App() {
 
   useEffect(() => {
     getConfig().then(setConfig).catch(() => undefined);
-    refresh();
-  }, [refresh]);
+    listSessions()
+      .then((list) => {
+        setSessions(list);
+        setSelected(initialSelection(loadLastView(), list.map((s) => s.id)));
+      })
+      .catch((err) => {
+        if (err instanceof ApiError && err.status === 401) setUnauthorized(true);
+      })
+      .finally(() => setReady(true));
+  }, []);
 
-  // 有会话在运行时定期刷新列表里的状态
-  useEffect(() => {
-    if (!sessions.some((s) => s.status === "running")) return;
-    const timer = setInterval(refresh, 2000);
-    return () => clearInterval(timer);
-  }, [sessions, refresh]);
-
-  const open = (id: string) => {
+  const open = (id: string | null) => {
     setSelected(id);
-    setComposing(false);
-    setRaw(null);
+    saveLastView(id);
+    setRaw(undefined);
   };
 
+  const view = {
+    rawOpen,
+    onToggleRaw: () => setRawOpen((v) => !v),
+    onRaw: (value: unknown) => {
+      setRaw(value);
+      setRawOpen(true);
+    },
+  };
+
+  if (unauthorized) {
+    return (
+      <div className="flex h-full items-center justify-center bg-content-area px-6">
+        <div className="max-w-md text-center">
+          <h1 className="mb-2 text-lg font-semibold">{t.unauthorized.title}</h1>
+          <p className="text-sm leading-relaxed text-muted-foreground">{t.unauthorized.body}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex h-full">
-      <Sidebar
-        sessions={sessions}
-        selected={composing ? null : selected}
-        onSelect={open}
-        onNewTask={() => {
-          setComposing(true);
-          setRaw(null);
-        }}
-      />
-      <main className="min-w-0 flex-1 overflow-y-auto">
-        {composing ? (
-          config && (
-            <NewTask
-              config={config}
-              onStarted={(id) => {
-                refresh();
-                open(id);
-              }}
-            />
-          )
-        ) : selected ? (
-          <SessionView key={selected} sessionId={selected} onRaw={setRaw} onEnded={refresh} />
-        ) : (
-          <p className="p-10 text-muted-foreground">{t.selectSession}</p>
-        )}
-      </main>
-      {raw !== null && <RawPanel value={raw} onClose={() => setRaw(null)} />}
-    </div>
+    <TooltipProvider delayDuration={300}>
+      <div className="flex h-full">
+        <Sidebar
+          sessions={sessions}
+          selected={selected}
+          onSelect={open}
+          onNew={() => open(null)}
+          collapsed={collapsed}
+          onToggleCollapsed={toggleCollapsed}
+          theme={theme}
+          onThemeChange={(pref) => {
+            localStorage.setItem(THEME_STORAGE_KEY, pref);
+            setTheme(pref);
+          }}
+        />
+        <main className="flex min-w-0 flex-1 bg-content-area">
+          {!ready ? null : selected ? (
+            <SessionChat key={selected} sessionId={selected} onActivity={refresh} {...view} />
+          ) : (
+            config && (
+              <NewChat
+                config={config}
+                onCreated={(id) => {
+                  refresh();
+                  open(id);
+                }}
+                {...view}
+              />
+            )
+          )}
+        </main>
+        {rawOpen && <RawPanel value={raw} onClose={() => setRawOpen(false)} />}
+      </div>
+    </TooltipProvider>
   );
 }

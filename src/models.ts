@@ -22,6 +22,18 @@ const DEFAULTS: Record<ProviderName, { modelId: string; key: () => string | unde
   },
 };
 
+/** 界面上可选的模型：pi 模型目录里该供应商的模型，去掉带日期后缀的别名 */
+export function listModels(provider: ProviderName): string[] {
+  return models
+    .getModels()
+    .filter((m) => m.provider === provider && !/-\d{8}$/.test(m.id))
+    .map((m) => m.id);
+}
+
+export function defaultModelId(provider: ProviderName): string {
+  return DEFAULTS[provider].modelId;
+}
+
 export function resolveModel(provider: ProviderName, modelId?: string): { model: Model<Api>; apiKey: string } {
   const d = DEFAULTS[provider];
   if (!d) throw new Error(`Unknown provider "${provider}". Use anthropic or deepseek.`);

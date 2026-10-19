@@ -1,10 +1,12 @@
-// 运行一次 agent 会话：把 pi 的循环、Seam 的工具、权限闸门和事件日志接在一起。
+// agent 会话：把 pi 的循环、Seam 的工具、权限闸门和事件日志接在一起。
+// 一个会话可以多次发消息，每条消息触发一次运行；日志一直追加在同一个文件里。
 import { Agent } from "@earendil-works/pi-agent-core";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { PiEventConverter, type SeamEvent } from "./events";
+import { readLog } from "./log";
 import { EventLog } from "./log";
 import { models } from "./models";
 import { createRecordingFetch } from "./recording-fetch";
@@ -38,13 +40,23 @@ export interface SessionOptions {
 
 export type Lang = "en" | "zh";
 
-/** 已启动的会话：sessionId 立即可用，done 在会话结束时完成 */
-export interface SessionHandle {
+/** 已打开的会话 */
+export interface Session {
   sessionId: string;
   logPath: string;
-  done: Promise<SessionResult>;
+  /** 发一条消息并运行到结束。运行中再调用会抛错 */
+  send: (text: string) => Promise<SessionResult>;
   abort: () => void;
+  isRunning: () => boolean;
 }
+
+/** 新建并立即开始的会话：done 在第一次运行结束时完成 */
+export interface SessionHandle extends Session {
+  done: Promise<SessionResult>;
+}
+
+/** 恢复会话时需要重新提供的运行参数；工作区、系统提示词和模型名都从日志里读取 */
+export type ResumeOptions = Omit<SessionOptions, "task" | "workspace" | "logDir">;
 
 export interface SessionResult {
   sessionId: string;
@@ -87,10 +99,9 @@ export function startSession(opts: SessionOptions): SessionHandle {
   const workspace = realpathSync(opts.workspace);
   const sessionId = `${new Date().toISOString().replace(/[:.]/g, "-")}-${crypto.randomUUID().slice(0, 8)}`;
   const log = new EventLog(join(opts.logDir ?? defaultLogDir(), `${sessionId}.jsonl`), sessionId, opts.onEvent);
+  const lang = opts.lang ?? "en";
+  const prompt = systemPrompt(workspace, lang);
   const tools = createTools(workspace);
-  const prompt = systemPrompt(workspace, opts.lang ?? "en");
-  const maxTurns = opts.maxTurns ?? 30;
-  const started = Date.now();
 
   log.record("session_start", "harness", {
     task: opts.task,
@@ -98,13 +109,79 @@ export function startSession(opts: SessionOptions): SessionHandle {
     model: { provider: opts.model.provider, id: opts.model.id, baseUrl: opts.model.baseUrl },
     systemPrompt: prompt,
     tools: tools.map((t) => t.name),
+    lang,
   });
 
+  const session = buildSession({ ...opts, log, workspace, systemPrompt: prompt, messages: [] });
+  return { ...session, done: session.send(opts.task) };
+}
+
+/** 从日志恢复会话（比如服务重启之后），之后可以继续发消息 */
+export function resumeSession(logPath: string, opts: ResumeOptions): Session {
+  const events = readLog(logPath);
+  const start = events.find((e) => e.type === "session_start");
+  if (start?.type !== "session_start") throw new Error("The log has no session_start event.");
+  const last = events.at(-1)!;
+  const log = new EventLog(logPath, start.sessionId, opts.onEvent, { seq: last.seq, turn: last.turn });
+  return buildSession({
+    ...opts,
+    log,
+    workspace: start.data.workspace,
+    systemPrompt: start.data.systemPrompt,
+    messages: rebuildMessages(events, opts.model),
+  });
+}
+
+/**
+ * 把日志里的事件还原成 pi 的对话历史：用户消息、模型消息和工具结果。
+ * 出错或被中止的模型消息不放回去，因为它们可能带着没有结果的工具调用。
+ */
+export function rebuildMessages(events: SeamEvent[], model: Model<Api>): any[] {
+  const messages: any[] = [];
+  for (const e of events) {
+    if (e.type === "user_message") {
+      messages.push({ role: "user", content: e.data.content, timestamp: e.ts });
+    } else if (e.type === "assistant_message") {
+      if (e.data.stopReason === "error" || e.data.stopReason === "aborted") continue;
+      messages.push({
+        role: "assistant",
+        content: e.data.content,
+        api: model.api,
+        provider: model.provider,
+        model: e.data.model,
+        responseId: e.data.responseId,
+        usage: e.data.usage,
+        stopReason: e.data.stopReason,
+        timestamp: e.ts,
+      });
+    } else if (e.type === "tool_result") {
+      messages.push({
+        role: "toolResult",
+        toolCallId: e.data.toolCallId,
+        toolName: e.data.name,
+        content: e.data.content,
+        details: e.data.details,
+        isError: e.data.isError,
+        timestamp: e.ts,
+      });
+    }
+  }
+  return messages;
+}
+
+function buildSession(
+  opts: ResumeOptions & { log: EventLog; workspace: string; systemPrompt: string; messages: any[] },
+): Session {
+  const { log } = opts;
+  const tools = createTools(opts.workspace);
+  const maxTurns = opts.maxTurns ?? 30;
   const recordingFetch = createRecordingFetch(log.record);
+  let running = false;
+  let runStartTurn = 0;
   let hitMaxTurns = false;
 
   const agent = new Agent({
-    initialState: { systemPrompt: prompt, model: opts.model, tools },
+    initialState: { systemPrompt: opts.systemPrompt, model: opts.model, tools, messages: opts.messages },
     toolExecution: "sequential",
     streamFn: (m, ctx, o) => models.streamSimple(m, ctx, { ...o, apiKey: opts.apiKey, fetch: recordingFetch }),
     beforeToolCall: async ({ toolCall, args }) => {
@@ -122,9 +199,9 @@ export function startSession(opts: SessionOptions): SessionHandle {
       log.record("permission", "harness", { ...base, decision: "deny", by: "user", reason });
       return { block: true, reason };
     },
-    // 达到最大轮数时，本轮工具执行完就结束，不再发起新的模型请求
+    // 一次运行达到最大轮数时，本轮工具执行完就结束，不再发起新的模型请求
     afterToolCall: async () => {
-      if (log.turn < maxTurns) return undefined;
+      if (log.turn - runStartTurn < maxTurns) return undefined;
       hitMaxTurns = true;
       return { terminate: true };
     },
@@ -138,28 +215,49 @@ export function startSession(opts: SessionOptions): SessionHandle {
     }
   });
 
-  const done = agent.prompt(opts.task).then(() => finish());
-  return { sessionId, logPath: log.path, done, abort: () => agent.abort() };
-
-  function finish(): SessionResult {
-    const last = agent.state.messages.findLast((m: any) => m.role === "assistant") as any;
+  async function send(text: string): Promise<SessionResult> {
+    if (running) throw new Error("The session is already running.");
+    running = true;
+    runStartTurn = log.turn;
+    hitMaxTurns = false;
+    const started = Date.now();
+    const firstNewMessage = agent.state.messages.length;
+    let thrown: Error | undefined;
+    try {
+      await agent.prompt(text);
+    } catch (err) {
+      thrown = err as Error;
+    }
+    // 只看这次运行产生的模型消息
+    const last = agent.state.messages.slice(firstNewMessage).findLast((m: any) => m.role === "assistant") as any;
     const finalText = (last?.content ?? [])
       .filter((c: any) => c.type === "text")
       .map((c: any) => c.text)
       .join("\n");
-    const reason = hitMaxTurns
-      ? "max_turns"
-      : last?.stopReason === "error"
-        ? "error"
-        : last?.stopReason === "aborted"
-          ? "aborted"
-          : "completed";
+    const reason = thrown
+      ? "error"
+      : hitMaxTurns
+        ? "max_turns"
+        : last?.stopReason === "error"
+          ? "error"
+          : last?.stopReason === "aborted"
+            ? "aborted"
+            : "completed";
+    // session_end 表示一次运行结束；会话可以继续追问，所以一个日志里可能有多条
     log.record("session_end", "harness", {
       reason,
       durationMs: Date.now() - started,
-      errorMessage: last?.errorMessage,
+      errorMessage: thrown?.message ?? last?.errorMessage,
     });
-
-    return { sessionId, logPath: log.path, finalText, reason };
+    running = false;
+    return { sessionId: log.sessionId, logPath: log.path, finalText, reason };
   }
+
+  return {
+    sessionId: log.sessionId,
+    logPath: log.path,
+    send,
+    abort: () => agent.abort(),
+    isRunning: () => running,
+  };
 }
