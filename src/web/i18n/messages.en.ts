@@ -102,8 +102,8 @@ export const en = {
   approval: {
     title: "Needs your approval",
     planTitle: "Plan needs approval",
-    requestedBy: "Model's request · paused by the harness",
-    planSection: "Plan",
+    requestedBy: "Paused by the harness",
+    stopRun: "Stop the run",
     edit: "Edit",
     editDone: "Done",
     enterHint: "Enter to approve",
@@ -114,7 +114,6 @@ export const en = {
     denyReason: "Reason (optional)",
     writeCreate: "Create file",
     writeOverwrite: "Overwrite file",
-    lines: (added: number, removed: number) => `+${added} / −${removed} lines`,
     commandWarning: "Commands run with your permissions and can reach outside the workspace.",
     addStep: "Add step",
     removeStep: "Remove step",

@@ -100,8 +100,8 @@ export const zh: Messages = {
   approval: {
     title: "需要你确认",
     planTitle: "计划待批准",
-    requestedBy: "模型的请求 · harness 已拦下",
-    planSection: "执行计划",
+    requestedBy: "harness 已暂停这一步",
+    stopRun: "停止运行",
     edit: "编辑",
     editDone: "完成",
     enterHint: "Enter 批准",
@@ -112,7 +112,6 @@ export const zh: Messages = {
     denyReason: "理由（可选）",
     writeCreate: "新建文件",
     writeOverwrite: "覆盖文件",
-    lines: (added: number, removed: number) => `+${added} / −${removed} 行`,
     commandWarning: "命令以你的身份运行，可以访问工作区以外的位置。",
     addStep: "添加步骤",
     removeStep: "删除这一步",

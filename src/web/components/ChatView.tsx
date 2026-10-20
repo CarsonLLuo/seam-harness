@@ -214,7 +214,8 @@ export function SessionChat({ sessionId, onActivity, ...view }: ViewProps & { se
       </Conversation>
 
       <div className="mx-auto w-full max-w-3xl px-6 pb-5">
-        {pendingApprovals[0] && (
+        {/* 等待确认时横幅替代输入框：这时既不能追问，停止也放在横幅里 */}
+        {pendingApprovals[0] ? (
           <ApprovalBanner
             key={pendingApprovals[0].toolCallId}
             request={pendingApprovals[0]}
@@ -222,9 +223,9 @@ export function SessionChat({ sessionId, onActivity, ...view }: ViewProps & { se
             onRespond={async (body) => {
               await respondApproval(sessionId, pendingApprovals[0]!.toolCallId, body);
             }}
+            onStop={() => void stopSession(sessionId).catch(() => undefined)}
           />
-        )}
-        {replaying ? (
+        ) : replaying ? (
           <ReplayBar steps={steps.length} step={replayStep} onStep={setReplayStep} />
         ) : (
           <>
