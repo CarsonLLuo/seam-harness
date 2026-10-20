@@ -1,9 +1,9 @@
 // 本地 Web 服务：安全校验、会话 API 和事件流。模型用本地模拟的 Anthropic 服务器。
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { createServer } from "../src/server/server";
+import { dirname, join } from "node:path";
+import { createServer, purgeTrash } from "../src/server/server";
 import { eventsAtStep, replaySteps } from "../src/web/replay-steps";
 import type { SeamEvent } from "../src/events";
 import { startMockAnthropic } from "./mock-anthropic";
@@ -11,6 +11,7 @@ import { startMockAnthropic } from "./mock-anthropic";
 const TOKEN = "test-token-123";
 let ws: string;
 let logDir: string;
+let trashDir: string;
 let mock: ReturnType<typeof startMockAnthropic>;
 let server: ReturnType<typeof createServer>;
 let base: string;
@@ -18,6 +19,7 @@ let base: string;
 beforeAll(() => {
   ws = mkdtempSync(join(tmpdir(), "seam-ws-"));
   logDir = mkdtempSync(join(tmpdir(), "seam-logs-"));
+  trashDir = join(mkdtempSync(join(tmpdir(), "seam-trash-")), "trash");
   writeFileSync(join(ws, "a.txt"), "banana\n");
   mock = startMockAnthropic([
     { toolUse: { id: "t1", name: "read_file", input: { path: "a.txt", intent: "look for banana" } } },
@@ -28,6 +30,7 @@ beforeAll(() => {
     port: 0,
     token: TOKEN,
     logDir,
+    trashDir,
     defaultWorkspace: ws,
     resolveModel: () => ({ model: mock.model, apiKey: "test-key" }),
     availableProviders: () => [{ name: "anthropic", models: ["claude-sonnet-5-5"], defaultModel: "claude-sonnet-5-5" }],
@@ -40,6 +43,7 @@ afterAll(() => {
   mock.stop();
   rmSync(ws, { recursive: true, force: true });
   rmSync(logDir, { recursive: true, force: true });
+  rmSync(dirname(trashDir), { recursive: true, force: true });
 });
 
 const authed = (init: RequestInit = {}): RequestInit => ({
@@ -149,6 +153,7 @@ describe("sessions", () => {
       port: 0,
       token: TOKEN,
       logDir,
+      trashDir,
       defaultWorkspace: ws,
       resolveModel: (_provider, modelId) => {
         asked.push(modelId);
@@ -186,6 +191,7 @@ describe("sessions", () => {
         port: 0,
         token: TOKEN,
         logDir,
+        trashDir,
         defaultWorkspace: ws,
         resolveModel: () => ({ model: replies.model, apiKey: "test-key" }),
         availableProviders: () => [{ name: "anthropic", models: ["claude-sonnet-5-5"], defaultModel: "claude-sonnet-5-5" }],
@@ -245,6 +251,7 @@ describe("sessions", () => {
       port: 0,
       token: TOKEN,
       logDir,
+      trashDir,
       defaultWorkspace: ws,
       resolveModel: () => ({ model: replies.model, apiKey: "test-key" }),
       availableProviders: () => [{ name: "anthropic", models: ["claude-sonnet-5-5"], defaultModel: "claude-sonnet-5-5" }],
@@ -326,6 +333,7 @@ describe("sessions", () => {
       port: 0,
       token: TOKEN,
       logDir,
+      trashDir,
       defaultWorkspace: ws,
       resolveModel: () => ({ model: replies.model, apiKey: "test-key" }),
       availableProviders: () => [{ name: "anthropic", models: ["claude-sonnet-5-5"], defaultModel: "claude-sonnet-5-5" }],
@@ -362,6 +370,82 @@ describe("sessions", () => {
   });
 });
 
+describe("deleting sessions", () => {
+  const del = (id: string, origin = base) =>
+    fetch(`${base}/api/sessions/${id}`, { method: "DELETE", headers: { cookie: `seam_token=${TOKEN}`, origin } });
+
+  test("a deleted session moves to the trash and leaves the list", async () => {
+    const start = await postJson("/api/sessions", { task: "Find banana" });
+    const { sessionId } = (await start.json()) as { sessionId: string };
+    await readStream(sessionId);
+
+    expect((await del(sessionId, "https://evil.example")).status).toBe(403);
+    expect((await del(sessionId)).status).toBe(200);
+
+    // 日志还在，只是移到了回收站；修改时间记成删除时间
+    expect(existsSync(join(logDir, `${sessionId}.jsonl`))).toBe(false);
+    const trashed = join(trashDir, `${sessionId}.jsonl`);
+    expect(existsSync(trashed)).toBe(true);
+    expect(Date.now() - statSync(trashed).mtimeMs).toBeLessThan(5000);
+
+    const list = (await (await fetch(`${base}/api/sessions`, authed())).json()) as { id: string }[];
+    expect(list.some((s) => s.id === sessionId)).toBe(false);
+    expect((await fetch(`${base}/api/sessions/${sessionId}/events`, authed())).status).toBe(404);
+    expect((await del(sessionId)).status).toBe(404);
+    expect((await del("..%2F..%2Fetc")).status).toBe(404);
+  });
+
+  test("a running session cannot be deleted", async () => {
+    const replies = startMockAnthropic([
+      { toolUse: { id: "p1", name: "propose_plan", input: { steps: ["写 b.txt"], intent: "plan" } } },
+      { text: "好的。" },
+    ]);
+    const srv = createServer({
+      port: 0,
+      token: TOKEN,
+      logDir,
+      trashDir,
+      defaultWorkspace: ws,
+      resolveModel: () => ({ model: replies.model, apiKey: "test-key" }),
+      availableProviders: () => [{ name: "anthropic", models: ["claude-sonnet-5-5"], defaultModel: "claude-sonnet-5-5" }],
+    });
+    const url = `http://127.0.0.1:${srv.port}`;
+    const headers = { cookie: `seam_token=${TOKEN}`, origin: url };
+    try {
+      const res = await fetch(`${url}/api/sessions`, {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({ task: "wait", provider: "anthropic" }),
+      });
+      const { sessionId } = (await res.json()) as { sessionId: string };
+      // 计划在等用户确认，运行还没结束
+      const removed = await fetch(`${url}/api/sessions/${sessionId}`, { method: "DELETE", headers });
+      expect(removed.status).toBe(409);
+      expect(existsSync(join(logDir, `${sessionId}.jsonl`))).toBe(true);
+      await fetch(`${url}/api/sessions/${sessionId}/stop`, { method: "POST", headers });
+    } finally {
+      srv.stop(true);
+      replies.stop();
+    }
+  });
+
+  test("the trash is emptied of logs older than 30 days", () => {
+    const dir = mkdtempSync(join(tmpdir(), "seam-purge-"));
+    const day = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    for (const [name, age] of [["old.jsonl", 31], ["recent.jsonl", 29]] as const) {
+      writeFileSync(join(dir, name), "{}\n");
+      const t = new Date(now - age * day);
+      utimesSync(join(dir, name), t, t);
+    }
+    purgeTrash(dir, now);
+    expect(existsSync(join(dir, "old.jsonl"))).toBe(false);
+    expect(existsSync(join(dir, "recent.jsonl"))).toBe(true);
+    purgeTrash(join(dir, "missing"), now); // 回收站不存在时什么也不做
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
 describe("replay steps", () => {
   test("silent events do not become steps, and each step shows events up to it", () => {
     const ev = (type: string) => ({ type }) as SeamEvent;
@@ -388,6 +472,7 @@ describe("workspaces", () => {
       port: 0,
       token: TOKEN,
       logDir,
+      trashDir,
       defaultWorkspace: ws,
       resolveModel: () => ({ model: mock.model, apiKey: "test-key" }),
       availableProviders: () => [{ name: "anthropic", models: ["claude-sonnet-5-5"], defaultModel: "claude-sonnet-5-5" }],

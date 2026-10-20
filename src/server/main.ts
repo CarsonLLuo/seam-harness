@@ -5,7 +5,7 @@ import { randomBytes } from "node:crypto";
 import app from "../web/index.html";
 import { loadProjectEnv } from "../env";
 import { defaultModelId, listModels, resolveModel, type ProviderName } from "../models";
-import { defaultLogDir } from "../session";
+import { defaultLogDir, defaultTrashDir } from "../session";
 import { pickFolderWithOsascript } from "./folder-picker";
 import { createServer } from "./server";
 
@@ -19,6 +19,7 @@ const server = createServer({
   port: Number(process.env.SEAM_PORT ?? 4321),
   token,
   logDir: defaultLogDir(),
+  trashDir: defaultTrashDir(),
   defaultWorkspace: process.cwd(),
   resolveModel,
   availableProviders: () =>

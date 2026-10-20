@@ -96,6 +96,11 @@ export function defaultLogDir(): string {
   return process.env.SEAM_HOME ? join(process.env.SEAM_HOME, "sessions") : join(homedir(), ".seam", "sessions");
 }
 
+/** 删除的会话移到这里，默认 ~/.seam/trash */
+export function defaultTrashDir(): string {
+  return process.env.SEAM_HOME ? join(process.env.SEAM_HOME, "trash") : join(homedir(), ".seam", "trash");
+}
+
 const WORKSPACE_NOTE_FILE = "SEAM.md";
 const WORKSPACE_NOTE_LIMIT = 32_000;
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, getConfig, listSessions, type Config, type SessionSummary } from "./api";
+import { ApiError, deleteSession, getConfig, listSessions, type Config, type SessionSummary } from "./api";
 import { useI18n } from "./i18n/i18n";
 import { NewChat, SessionChat } from "./components/ChatView";
 import { RawPanel } from "./components/RawPanel";
@@ -95,6 +95,11 @@ export function App() {
           selected={selected}
           onSelect={open}
           onNew={() => open(null)}
+          onDelete={async (id) => {
+            await deleteSession(id);
+            refresh();
+            if (selected === id) open(null);
+          }}
           collapsed={collapsed}
           onToggleCollapsed={toggleCollapsed}
           theme={theme}

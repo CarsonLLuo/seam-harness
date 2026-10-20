@@ -59,6 +59,9 @@ export const startTask = (input: { task: string; provider: string; model: string
 
 export const sendMessage = (id: string, text: string) => post<{ ok: true }>(`/api/sessions/${id}/messages`, { text });
 
+/** 删除会话：服务端把日志移到回收站，30 天后彻底删除 */
+export const deleteSession = (id: string) => request<{ ok: true }>(`/api/sessions/${id}`, { method: "DELETE" });
+
 export const stopSession = (id: string) => post<{ ok: true }>(`/api/sessions/${id}/stop`);
 
 export const respondApproval = (id: string, toolCallId: string, body: ApprovalDecision) =>

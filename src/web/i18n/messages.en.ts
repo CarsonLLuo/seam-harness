@@ -19,6 +19,16 @@ export const en = {
     week: "Previous 7 days",
     older: "Older",
   },
+  sessionActions: "Session actions",
+  deleteSession: {
+    action: "Delete",
+    runningHint: "Stop the run first",
+    title: "Delete this session?",
+    body: (task: string) => `“${task}” moves to the trash and is permanently deleted after 30 days.`,
+    cancel: "Cancel",
+    confirm: "Delete",
+    failed: "Could not delete the session.",
+  },
 
   welcomeTitle: "What should the agent do?",
   welcomeHint: "Seam shows what the agent actually reads, what it asks to do, and what is only its own account.",

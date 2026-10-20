@@ -1,10 +1,22 @@
-import { Languages, Monitor, Moon, PanelLeftClose, PanelLeftOpen, SquarePen, Sun } from "lucide-react";
+import { Ellipsis, Languages, Monitor, Moon, PanelLeftClose, PanelLeftOpen, SquarePen, Sun, Trash2 } from "lucide-react";
+import { useState } from "react";
 import type { SessionSummary } from "../api";
 import { useI18n } from "../i18n/i18n";
 import type { ThemePref } from "../theme";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
@@ -67,17 +79,106 @@ function ThemeMenu({ value, onChange }: { value: ThemePref; onChange: (pref: The
   );
 }
 
+/** 悬停时出现的 … 菜单。运行中（包括等待确认）的会话不能删除 */
+function SessionMenu({ session, onDelete }: { session: SessionSummary; onDelete: () => void }) {
+  const { t } = useI18n();
+  const running = session.status === "running";
+  return (
+    // modal={false}：菜单关闭后马上打开确认框，避免两层模态抢焦点
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={t.sessionActions}
+          className="absolute top-1.5 right-1.5 rounded p-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-accent hover:text-foreground focus-visible:opacity-100 data-[state=open]:opacity-100"
+        >
+          <Ellipsis className="h-4 w-4" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" side="right">
+        <DropdownMenuItem
+          disabled={running}
+          onSelect={onDelete}
+          className="text-destructive focus:text-destructive"
+        >
+          <Trash2 />
+          {t.deleteSession.action}
+          {running && <span className="ml-auto pl-3 text-xs text-muted-foreground">{t.deleteSession.runningHint}</span>}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function DeleteDialog({
+  session,
+  onClose,
+  onConfirm,
+}: {
+  session: SessionSummary | null;
+  onClose: () => void;
+  onConfirm: (id: string) => Promise<void>;
+}) {
+  const { t } = useI18n();
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  return (
+    <AlertDialog
+      open={session !== null}
+      onOpenChange={(open) => {
+        if (open || busy) return;
+        setFailed(false);
+        onClose();
+      }}
+    >
+      <AlertDialogContent className="max-w-sm">
+        <AlertDialogHeader>
+          <AlertDialogTitle className="text-base">{t.deleteSession.title}</AlertDialogTitle>
+          <AlertDialogDescription className="break-words">{session && t.deleteSession.body(session.task)}</AlertDialogDescription>
+          {failed && <p className="text-sm text-destructive">{t.deleteSession.failed}</p>}
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={busy}>{t.deleteSession.cancel}</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={busy}
+            className="bg-destructive text-white hover:bg-destructive/90"
+            onClick={async (e) => {
+              // 等删除完成再关闭；失败时留在弹窗里显示原因
+              e.preventDefault();
+              if (!session) return;
+              setBusy(true);
+              try {
+                await onConfirm(session.id);
+                setFailed(false);
+                onClose();
+              } catch {
+                setFailed(true);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {t.deleteSession.confirm}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
 export function Sidebar(props: {
   sessions: SessionSummary[];
   selected: string | null;
   onSelect: (id: string) => void;
   onNew: () => void;
+  onDelete: (id: string) => Promise<void>;
   collapsed: boolean;
   onToggleCollapsed: () => void;
   theme: ThemePref;
   onThemeChange: (pref: ThemePref) => void;
 }) {
   const { t, lang, toggle } = useI18n();
+  const [deleting, setDeleting] = useState<SessionSummary | null>(null);
   const shortcut = navigator.platform.toLowerCase().includes("mac") ? "⌘B" : "Ctrl+B";
 
   const time = new Intl.DateTimeFormat(lang === "zh" ? "zh-CN" : "en", { hour: "2-digit", minute: "2-digit" });
@@ -151,22 +252,24 @@ export function Sidebar(props: {
                 <div key={g} className="mt-3 first:mt-1">
                   <div className="px-2 pb-1 text-xs font-medium text-muted-foreground">{t.groups[g]}</div>
                   {items.map((s) => (
-                    <button
-                      key={s.id}
-                      onClick={() => props.onSelect(s.id)}
-                      className={cn(
-                        "block w-full rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent/70",
-                        props.selected === s.id && "bg-accent",
-                      )}
-                    >
-                      <div className="truncate text-sm">{s.task}</div>
-                      <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-                        <StatusBadge status={s.status} />
-                        <span className="truncate tabular-nums">
-                          {g === "today" || g === "yesterday" ? time.format(s.startedAt) : date.format(s.startedAt)}
-                        </span>
-                      </div>
-                    </button>
+                    <div key={s.id} className="group relative">
+                      <button
+                        onClick={() => props.onSelect(s.id)}
+                        className={cn(
+                          "block w-full rounded-md px-2 py-1.5 text-left transition-colors group-focus-within:pr-8 group-hover:pr-8 group-has-[[data-state=open]]:pr-8 hover:bg-accent/70",
+                          props.selected === s.id && "bg-accent",
+                        )}
+                      >
+                        <div className="truncate text-sm">{s.task}</div>
+                        <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+                          <StatusBadge status={s.status} />
+                          <span className="truncate tabular-nums">
+                            {g === "today" || g === "yesterday" ? time.format(s.startedAt) : date.format(s.startedAt)}
+                          </span>
+                        </div>
+                      </button>
+                      <SessionMenu session={s} onDelete={() => setDeleting(s)} />
+                    </div>
                   ))}
                 </div>
               );
@@ -186,6 +289,8 @@ export function Sidebar(props: {
           <ThemeMenu value={props.theme} onChange={props.onThemeChange} />
         </div>
       </div>
+
+      <DeleteDialog session={deleting} onClose={() => setDeleting(null)} onConfirm={props.onDelete} />
     </aside>
   );
 }

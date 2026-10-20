@@ -20,6 +20,16 @@ export const zh: Messages = {
     week: "过去 7 天",
     older: "更早",
   },
+  sessionActions: "会话操作",
+  deleteSession: {
+    action: "删除",
+    runningHint: "先停止运行",
+    title: "删除这条会话？",
+    body: (task: string) => `「${task}」会移到回收站，30 天后彻底删除。`,
+    cancel: "取消",
+    confirm: "删除",
+    failed: "删除失败。",
+  },
 
   welcomeTitle: "想让 agent 做什么？",
   welcomeHint: "Seam 会让你看到 agent 实际读了什么、请求做什么，以及哪些只是它自己的说法。",

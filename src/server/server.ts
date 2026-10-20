@@ -5,7 +5,7 @@
 //   - 校验 Host 请求头（防 DNS 重绑定），写操作再校验 Origin 请求头
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { timingSafeEqual } from "node:crypto";
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import type { SeamEvent } from "../events";
 import { readLog } from "../log";
@@ -26,6 +26,8 @@ export interface ServerOptions {
   port: number;
   token: string;
   logDir: string;
+  /** 删除的会话移到这里；服务启动时彻底删除放了超过 30 天的 */
+  trashDir: string;
   /** 新建任务时工作区输入框的默认值 */
   defaultWorkspace: string;
   resolveModel: (provider: ProviderName, modelId?: string) => { model: Model<Api>; apiKey: string };
@@ -82,6 +84,7 @@ interface Entry {
 const COOKIE = "seam_token";
 const RECENT_WORKSPACES = 8;
 const APPROVAL_TIMEOUT_MS = 10 * 60 * 1000;
+const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 const PICK_PROMPT: Record<Lang, string> = {
   en: "Choose the workspace folder for the agent",
@@ -120,8 +123,19 @@ function cookieValue(req: Request, name: string): string | undefined {
 const json = (data: unknown, status = 200) => Response.json(data, { status });
 const fail = (status: number, error: string) => json({ error }, status);
 
+/** 彻底删除回收站里放了超过 30 天的日志。移进回收站时把修改时间设为删除时间，这里按它计算 */
+export function purgeTrash(trashDir: string, now = Date.now()): void {
+  if (!existsSync(trashDir)) return;
+  for (const f of readdirSync(trashDir)) {
+    if (!f.endsWith(".jsonl")) continue;
+    const p = join(trashDir, f);
+    if (now - statSync(p).mtimeMs > TRASH_RETENTION_MS) rmSync(p, { force: true });
+  }
+}
+
 export function createServer(opts: ServerOptions) {
   const entries = new Map<string, Entry>();
+  purgeTrash(opts.trashDir);
 
   // ---- 安全校验 ----
   const allowedHosts = () => [`127.0.0.1:${server.port}`, `localhost:${server.port}`];
@@ -373,6 +387,20 @@ export function createServer(opts: ServerOptions) {
     return json({ ok: true });
   }
 
+  /** 删除会话：把日志移到回收站，不真删。运行中的会话（包括等待确认的）不能删 */
+  function deleteSession(id: string): Response {
+    const path = logPath(id);
+    if (!path) return fail(404, "Session not found.");
+    if (entries.get(id)?.session?.isRunning()) return fail(409, "The session is still running.");
+    mkdirSync(opts.trashDir, { recursive: true });
+    const target = join(opts.trashDir, `${id}.jsonl`);
+    renameSync(path, target);
+    const now = new Date();
+    utimesSync(target, now, now);
+    entries.delete(id);
+    return json({ ok: true });
+  }
+
   /** SSE：先补发已有事件和当前状态，之后持续推送 */
   function stream(id: string): Response {
     const entry = entryOf(id);
@@ -445,6 +473,7 @@ export function createServer(opts: ServerOptions) {
         GET: api(() => json(listSessions())),
         POST: api(createSession),
       },
+      "/api/sessions/:id": { DELETE: api((req) => deleteSession(req.params.id!)) },
       "/api/sessions/:id/events": {
         GET: api((req) => {
           const e = entryOf(req.params.id!);
