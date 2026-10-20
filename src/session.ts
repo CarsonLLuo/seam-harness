@@ -325,6 +325,7 @@ function buildSession(
   let running = false;
   let runStartTurn = 0;
   let hitMaxTurns = false;
+  let stopRequested = false;
 
   const agent = new Agent({
     initialState: { systemPrompt: opts.systemPrompt, model: opts.model, tools, messages: opts.messages },
@@ -449,6 +450,7 @@ function buildSession(
     running = true;
     runStartTurn = log.turn;
     hitMaxTurns = false;
+    stopRequested = false;
     // 计划按“一次运行”算：每条用户消息都可以要求一个新的计划
     planApproved = false;
     planState = undefined;
@@ -466,15 +468,18 @@ function buildSession(
       .filter((c: any) => c.type === "text")
       .map((c: any) => c.text)
       .join("\n");
-    const reason = thrown
-      ? "error"
-      : hitMaxTurns
-        ? "max_turns"
-        : last?.stopReason === "error"
-          ? "error"
-          : last?.stopReason === "aborted"
-            ? "aborted"
-            : "completed";
+    // 用户停止后，pi 可能还会用已中止的信号再发一次请求，记成 stopReason "error"，这里按停止算
+    const reason = stopRequested
+      ? "aborted"
+      : thrown
+        ? "error"
+        : hitMaxTurns
+          ? "max_turns"
+          : last?.stopReason === "error"
+            ? "error"
+            : last?.stopReason === "aborted"
+              ? "aborted"
+              : "completed";
     // session_end 表示一次运行结束；会话可以继续追问，所以一个日志里可能有多条
     log.record("session_end", "harness", {
       reason,
@@ -489,7 +494,10 @@ function buildSession(
     sessionId: log.sessionId,
     logPath: log.path,
     send,
-    abort: () => agent.abort(),
+    abort: () => {
+      if (running) stopRequested = true;
+      agent.abort();
+    },
     isRunning: () => running,
   };
 }

@@ -164,6 +164,41 @@ test("sending while a run is in progress is rejected", async () => {
   }
 });
 
+test("stopping while an approval is pending ends the run as aborted", async () => {
+  const mock = startMockAnthropic([
+    { toolUse: { id: "p1", name: "propose_plan", input: { steps: ["Write b.txt"], intent: "plan the change" } } },
+    { text: "should not be reached" },
+  ]);
+  try {
+    let asked!: () => void;
+    const pending = new Promise<void>((r) => (asked = r));
+    // 和 Web 界面的审批一样：停止时以 by: "aborted" 拒绝挂起的请求
+    const session = startSession({
+      task: "write b.txt",
+      workspace: ws,
+      model: mock.model,
+      apiKey: "test-key",
+      logDir,
+      approve: (_req, signal) =>
+        new Promise((resolve) => {
+          signal?.addEventListener("abort", () => resolve({ approved: false, reason: "Stopped.", by: "aborted" }), {
+            once: true,
+          });
+          asked();
+        }),
+    });
+    await pending;
+    session.abort();
+    const result = await session.done;
+
+    expect(result.reason).toBe("aborted");
+    const end = readLog(result.logPath).findLast((e) => e.type === "session_end");
+    expect(end?.data.reason).toBe("aborted");
+  } finally {
+    mock.stop();
+  }
+});
+
 test("blocks paths outside the workspace before asking the user", async () => {
   const mock = startMockAnthropic([
     { toolUse: { id: "t1", name: "read_file", input: { path: "../outside.txt", intent: "peek outside" } } },
