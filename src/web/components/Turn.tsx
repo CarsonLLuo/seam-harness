@@ -78,6 +78,8 @@ export function Turn({
     | { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }
     | undefined;
   const input = usage ? (usage.input ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0) : undefined;
+  // 用户停止时 pi 会留下 “The operation was aborted.” 之类的报错；这是停止的结果，不当成错误标红（原始记录里仍可看到）
+  const stopped = turn.end?.reason === "aborted";
   const userText = turn.user ? (typeof turn.user.content === "string" ? turn.user.content : textOf(turn.user.content as unknown[])) : "";
 
   return (
@@ -107,7 +109,7 @@ export function Turn({
             </div>
           )
         )}
-        {turn.assistant?.errorMessage && <p className="mt-2 text-sm text-destructive">{turn.assistant.errorMessage}</p>}
+        {turn.assistant?.errorMessage && !stopped && <p className="mt-2 text-sm text-destructive">{turn.assistant.errorMessage}</p>}
 
         {turn.toolCalls.length > 0 && (
           <div className={cn("space-y-1.5", text && "mt-3")}>
@@ -126,7 +128,7 @@ export function Turn({
         {turn.end && (
           <div className="mt-3 text-xs text-muted-foreground tabular-nums">
             {t.runEnded(t.status[turn.end.reason], (turn.end.durationMs / 1000).toFixed(1))}
-            {turn.end.errorMessage && <span className="text-destructive"> — {turn.end.errorMessage}</span>}
+            {turn.end.errorMessage && !stopped && <span className="text-destructive"> — {turn.end.errorMessage}</span>}
           </div>
         )}
       </div>
