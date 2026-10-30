@@ -80,7 +80,7 @@ export function App() {
     return (
       <div className="flex h-full items-center justify-center bg-content-area px-6">
         <div className="max-w-md text-center">
-          <h1 className="mb-2 text-[15px] font-semibold">{t.unauthorized.title}</h1>
+          <h1 className="mb-2 text-[14.5px] font-semibold">{t.unauthorized.title}</h1>
           <p className="text-sm leading-relaxed text-muted-foreground">{t.unauthorized.body}</p>
         </div>
       </div>

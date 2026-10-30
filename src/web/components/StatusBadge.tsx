@@ -2,9 +2,9 @@ import type { SessionSummary } from "../api";
 import { useI18n } from "../i18n/i18n";
 
 const DOT: Record<SessionSummary["status"] | "waiting", string> = {
-  running: "bg-fact animate-pulse",
+  running: "bg-foreground animate-pulse",
   waiting: "bg-amber-500 animate-pulse",
-  completed: "bg-fact",
+  completed: "bg-muted-foreground/60",
   error: "bg-destructive",
   aborted: "bg-muted-foreground",
   max_turns: "bg-muted-foreground",

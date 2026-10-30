@@ -155,7 +155,7 @@ export function ApprovalBanner({
                 </span>
                 <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{request.preview.path}</span>
                 <span className="shrink-0 font-mono text-xs tabular-nums">
-                  <span className="text-fact">+{request.preview.added}</span>{" "}
+                  <span className="text-foreground">+{request.preview.added}</span>{" "}
                   <span className="text-destructive">−{request.preview.removed}</span>
                 </span>
               </div>
@@ -166,7 +166,7 @@ export function ApprovalBanner({
                       key={i}
                       className={cn(
                         "px-2.5",
-                        line.startsWith("+") && "bg-fact/10 text-fact",
+                        line.startsWith("+") && "bg-foreground/[0.06] text-foreground",
                         line.startsWith("-") && "bg-destructive/10 text-destructive",
                       )}
                     >

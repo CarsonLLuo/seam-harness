@@ -133,7 +133,7 @@ function DeleteDialog({
     >
       <AlertDialogContent className="max-w-sm">
         <AlertDialogHeader>
-          <AlertDialogTitle className="text-[15px]">{t.deleteSession.title}</AlertDialogTitle>
+          <AlertDialogTitle className="text-[14.5px]">{t.deleteSession.title}</AlertDialogTitle>
           <AlertDialogDescription className="break-words">{session && t.deleteSession.body(session.task)}</AlertDialogDescription>
           {failed && <p className="text-sm text-destructive">{t.deleteSession.failed}</p>}
         </AlertDialogHeader>
@@ -233,7 +233,7 @@ export function Sidebar(props: {
         )}
       >
         <div className="flex h-12 items-center gap-1 pr-2 pl-4">
-          <span className="flex-1 text-[15px] font-semibold tracking-tight">{t.appName}</span>
+          <span className="flex-1 text-[14.5px] font-semibold tracking-tight">{t.appName}</span>
           <IconButton label={`${t.collapseSidebar} (${shortcut})`} onClick={props.onToggleCollapsed}>
             <PanelLeftClose />
           </IconButton>

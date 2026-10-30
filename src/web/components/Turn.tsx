@@ -1,5 +1,4 @@
 import {
-  Check,
   ChevronRight,
   FilePen,
   FileText,
@@ -43,14 +42,14 @@ function textOf(content: unknown[] | undefined): string {
 export function UserMessage({ text }: { text: string }) {
   return (
     <div className="flex justify-end">
-      <div className="max-w-[85%] rounded-2xl bg-secondary px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap">{text}</div>
+      <div className="max-w-[85%] rounded-2xl bg-secondary px-4 py-2.5 text-[14.5px] leading-[1.65] whitespace-pre-wrap">{text}</div>
     </div>
   );
 }
 
 export function MarkdownText({ text }: { text: string }) {
   return (
-    <div className="prose prose-neutral max-w-none text-[15px] leading-relaxed dark:prose-invert prose-p:my-2 prose-pre:bg-code-bg prose-pre:text-xs [&_:not(pre)>code]:text-sm prose-code:before:content-none prose-code:after:content-none prose-table:text-sm">
+    <div className="prose prose-neutral max-w-none text-[14.5px] leading-[1.65] dark:prose-invert prose-p:my-2 prose-pre:bg-code-bg prose-pre:text-xs [&_:not(pre)>code]:text-sm prose-code:before:content-none prose-code:after:content-none prose-table:text-sm">
       <Markdown remarkPlugins={[remarkGfm]}>{text}</Markdown>
     </div>
   );
@@ -157,8 +156,7 @@ function ToolCallRow({
   const denied = permission?.decision === "deny";
   const resultText = result ? textOf(result.content) : "";
 
-  const StatusIcon = !result ? Loader2 : denied || result.isError ? X : Check;
-  const permissionLabel = !permission
+    const permissionLabel = !permission
     ? approval
       ? t.permission.waitingUser
       : t.permission.pending
@@ -183,22 +181,19 @@ function ToolCallRow({
   return (
     <Collapsible
       className={cn(
-        "rounded-lg border border-border/80 bg-card shadow-xs",
+        "rounded-lg border border-border bg-card",
         animate && "animate-in fade-in duration-150 ease-smooth",
       )}
     >
       <CollapsibleTrigger className="group/row flex w-full items-center gap-2 px-3 py-2 text-left text-sm">
         <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]/row:rotate-90" />
         <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <span className="font-mono text-xs">{name}</span>
-        {typeof keyArg === "string" && <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">{keyArg}</span>}
-        <StatusIcon
-          className={cn(
-            "ml-auto h-3.5 w-3.5 shrink-0",
-            !result && "animate-spin text-muted-foreground",
-            result && (denied || result.isError ? "text-destructive" : "text-fact"),
-          )}
-        />
+        {/* 状态靠文字表达：进行中有微光扫过，完成后变成次要灰，只有被拒绝或出错才出现颜色 */}
+        <span className={cn("font-medium", !result ? "text-shimmer" : "text-muted-foreground")}>{name}</span>
+        {typeof keyArg === "string" && (
+          <span className={cn("min-w-0 truncate text-muted-foreground", planSteps ? "text-sm" : "font-mono text-xs")}>{keyArg}</span>
+        )}
+        {result && (denied || result.isError) && <X className="ml-auto h-3.5 w-3.5 shrink-0 text-destructive" />}
       </CollapsibleTrigger>
 
       {/* 模型自述：专用颜色、虚线竖条、明确标注；始终可见 */}
@@ -228,7 +223,7 @@ function ToolCallRow({
         title={t.source.harness}
       >
         <div className="px-3 py-2 text-sm">
-          <div className={cn(denied ? "text-destructive" : "text-fact")}>
+          <div className={cn(denied ? "text-destructive" : "text-foreground")}>
             {permissionLabel}
             {permission?.reason && <span className="text-muted-foreground"> — {permission.reason}</span>}
           </div>
