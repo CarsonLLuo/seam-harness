@@ -1,6 +1,6 @@
 // 本地 Web 服务：安全校验、会话 API 和事件流。模型用本地模拟的 Anthropic 服务器。
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createServer, purgeTrash } from "../src/server/server";
@@ -22,8 +22,8 @@ beforeAll(() => {
   trashDir = join(mkdtempSync(join(tmpdir(), "seam-trash-")), "trash");
   writeFileSync(join(ws, "a.txt"), "banana\n");
   mock = startMockAnthropic([
-    { toolUse: { id: "t1", name: "read_file", input: { path: "a.txt", intent: "look for banana" } } },
-    { toolUse: { id: "t2", name: "write_file", input: { path: "b.txt", content: "x", intent: "save" } } },
+    { toolUse: { id: "t1", name: "read_file", input: { path: "a.txt", step: 0, intent: "look for banana" } } },
+    { toolUse: { id: "t2", name: "write_file", input: { path: "b.txt", content: "x", step: 0, intent: "save" } } },
     { text: "a.txt mentions banana." },
   ]);
   server = createServer({
@@ -244,7 +244,7 @@ describe("sessions", () => {
   test("the web interface approves a plan and a write through the stream", async () => {
     const replies = startMockAnthropic([
       { toolUse: { id: "p1", name: "propose_plan", input: { steps: ["保存 b.txt"], intent: "先说明计划" } } },
-      { toolUse: { id: "w1", name: "write_file", input: { path: "b.txt", content: "hi from test", intent: "保存" } } },
+      { toolUse: { id: "w1", name: "write_file", input: { path: "b.txt", content: "hi from test", step: 0, intent: "保存" } } },
       { text: "已保存。" },
     ]);
     const srv = createServer({
@@ -501,6 +501,20 @@ describe("workspaces", () => {
     } finally {
       srv.stop(true);
     }
+  });
+
+  test("a session lists its workspace files, skipping .git and node_modules", async () => {
+    mkdirSync(join(ws, ".git"), { recursive: true });
+    writeFileSync(join(ws, ".git", "HEAD"), "x");
+    mkdirSync(join(ws, "node_modules", "pkg"), { recursive: true });
+    writeFileSync(join(ws, "node_modules", "pkg", "index.js"), "x");
+    const [first] = (await (await fetch(`${base}/api/sessions`, authed())).json()) as { id: string }[];
+    const res = await fetch(`${base}/api/sessions/${first!.id}/files`, authed());
+    const body = (await res.json()) as { files: string[]; truncated: boolean };
+    expect(body.files).toContain("a.txt");
+    expect(body.files.some((f) => f.startsWith(".git") || f.startsWith("node_modules"))).toBe(false);
+    expect(body.truncated).toBe(false);
+    expect((await fetch(`${base}/api/sessions/nope/files`, authed())).status).toBe(404);
   });
 
   test("without a folder picker the endpoint says it is unavailable", async () => {

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError, deleteSession, getConfig, listSessions, type Config, type SessionSummary } from "./api";
 import { useI18n } from "./i18n/i18n";
 import { NewChat, SessionChat } from "./components/ChatView";
-import { RawPanel } from "./components/RawPanel";
+import { RawPanel, type PanelSession, type PanelTab } from "./components/RawPanel";
 import { Sidebar } from "./components/Sidebar";
 import { initialSelection, loadLastView, saveLastView } from "./startup";
 import { applyTheme, loadThemePref, THEME_STORAGE_KEY, type ThemePref } from "./theme";
@@ -18,6 +18,8 @@ export function App() {
   const [selected, setSelected] = useState<string | null>(null);
   const [rawOpen, setRawOpen] = useState(false);
   const [raw, setRaw] = useState<unknown>(undefined);
+  const [panelTab, setPanelTab] = useState<PanelTab>("map");
+  const [panelSession, setPanelSession] = useState<PanelSession | null>(null);
   /** 拿到会话列表、决定好打开哪个会话之前不渲染主区域，避免先闪一下新会话页 */
   const [ready, setReady] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_KEY) === "1");
@@ -65,6 +67,7 @@ export function App() {
     setSelected(id);
     saveLastView(id);
     setRaw(undefined);
+    setPanelSession(null);
   };
 
   const view = {
@@ -72,6 +75,7 @@ export function App() {
     onToggleRaw: () => setRawOpen((v) => !v),
     onRaw: (value: unknown) => {
       setRaw(value);
+      setPanelTab("raw");
       setRawOpen(true);
     },
   };
@@ -110,7 +114,7 @@ export function App() {
         />
         <main className="flex min-w-0 flex-1 bg-content-area">
           {!ready ? null : selected ? (
-            <SessionChat key={selected} sessionId={selected} onActivity={refresh} {...view} />
+            <SessionChat key={selected} sessionId={selected} onActivity={refresh} onEvents={setPanelSession} {...view} />
           ) : (
             config && (
               <NewChat
@@ -124,7 +128,14 @@ export function App() {
             )
           )}
         </main>
-        <RawPanel value={raw} open={rawOpen} onClose={() => setRawOpen(false)} />
+        <RawPanel
+          value={raw}
+          open={rawOpen}
+          onClose={() => setRawOpen(false)}
+          tab={panelSession || panelTab === "raw" ? panelTab : "raw"}
+          onTab={setPanelTab}
+          session={panelSession}
+        />
       </div>
     </TooltipProvider>
   );

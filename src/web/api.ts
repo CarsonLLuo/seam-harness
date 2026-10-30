@@ -64,6 +64,9 @@ export const deleteSession = (id: string) => request<{ ok: true }>(`/api/session
 
 export const stopSession = (id: string) => post<{ ok: true }>(`/api/sessions/${id}/stop`);
 
+/** 会话工作区里的文件（相对路径）；工作区不存在时报 404 */
+export const listFiles = (id: string) => request<{ files: string[]; truncated: boolean }>(`/api/sessions/${id}/files`);
+
 export const respondApproval = (id: string, toolCallId: string, body: ApprovalDecision) =>
   post<{ ok: true }>(`/api/sessions/${id}/approvals/${toolCallId}`, body);
 

@@ -10,6 +10,7 @@ import { ApprovalBanner } from "./ApprovalBanner";
 import { Composer } from "./Composer";
 import { IconButton } from "./IconButton";
 import { ModelPicker } from "./ModelPicker";
+import type { PanelSession } from "./RawPanel";
 import { initialModelChoice, loadModelChoice, saveModelChoice } from "../model-choice";
 import { ReplayBar } from "./ReplayBar";
 import { StatusBadge } from "./StatusBadge";
@@ -105,7 +106,12 @@ export function NewChat({ config, onCreated, ...view }: ViewProps & { config: Co
 }
 
 /** 已有会话：实时显示、继续追问、回放 */
-export function SessionChat({ sessionId, onActivity, ...view }: ViewProps & { sessionId: string; onActivity: () => void }) {
+export function SessionChat({
+  sessionId,
+  onActivity,
+  onEvents,
+  ...view
+}: ViewProps & { sessionId: string; onActivity: () => void; onEvents: (s: PanelSession) => void }) {
   const { t } = useI18n();
   const [events, setEvents] = useState<SeamEvent[]>([]);
   const [deltas, setDeltas] = useState<Record<number, string>>({});
@@ -164,6 +170,8 @@ export function SessionChat({ sessionId, onActivity, ...view }: ViewProps & { se
     [events, steps, replayStep, replaying],
   );
   const session = useMemo(() => reconstruct(visible), [visible]);
+  // 侧边面板跟着回放走：任务地图和阅读覆盖只显示到当前这一步
+  useEffect(() => onEvents({ sessionId, events: visible }), [sessionId, visible, onEvents]);
   const full = useMemo(() => reconstruct(events), [events]);
   const start = full.start;
   const pendingApprovals = Object.values(approvals);

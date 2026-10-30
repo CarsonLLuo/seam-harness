@@ -10,6 +10,7 @@ import { join } from "node:path";
 import type { SeamEvent } from "../events";
 import { readLog } from "../log";
 import type { ProviderName } from "../models";
+import { listWorkspaceFiles } from "../tools";
 import {
   resumeSession,
   startSession,
@@ -83,6 +84,7 @@ interface Entry {
 
 const COOKIE = "seam_token";
 const RECENT_WORKSPACES = 8;
+const MAX_LISTED_FILES = 2000; // 阅读覆盖图最多列出的文件数
 const APPROVAL_TIMEOUT_MS = 10 * 60 * 1000;
 const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -279,6 +281,16 @@ export function createServer(opts: ServerOptions) {
       if (seen.size >= RECENT_WORKSPACES) break;
     }
     return [...seen];
+  }
+
+  /** 会话工作区里的文件列表，给阅读覆盖图用；文件太多时截断 */
+  async function workspaceFiles(id: string): Promise<Response> {
+    const e = entryOf(id);
+    if (!e) return fail(404, "Session not found.");
+    const start = e.events.find((ev) => ev.type === "session_start");
+    const ws = start?.type === "session_start" ? start.data.workspace : undefined;
+    if (!ws || !existsSync(ws)) return fail(404, "The workspace folder no longer exists.");
+    return json(await listWorkspaceFiles(ws, MAX_LISTED_FILES));
   }
 
   async function pickFolder(req: Request): Promise<Response> {
@@ -480,6 +492,7 @@ export function createServer(opts: ServerOptions) {
           return e ? json(e.events) : fail(404, "Session not found.");
         }),
       },
+      "/api/sessions/:id/files": { GET: api((req) => workspaceFiles(req.params.id!)) },
       "/api/sessions/:id/stream": { GET: api((req) => stream(req.params.id!)) },
       "/api/sessions/:id/messages": { POST: api((req) => sendMessage(req.params.id!, req)) },
       "/api/sessions/:id/approvals/:toolCallId": {

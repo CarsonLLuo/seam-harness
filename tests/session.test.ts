@@ -24,9 +24,9 @@ afterAll(() => {
 
 test("a session can be fully rebuilt from its log", async () => {
   const mock = startMockAnthropic([
-    { toolUse: { id: "t1", name: "read_file", input: { path: "a.txt", intent: "look for banana" } } },
+    { toolUse: { id: "t1", name: "read_file", input: { path: "a.txt", step: 0, intent: "look for banana" } } },
     { toolUse: { id: "p1", name: "propose_plan", input: { steps: ["Write a note to b.txt"], intent: "plan the change" } } },
-    { toolUse: { id: "t2", name: "write_file", input: { path: "b.txt", content: "x", intent: "save a note" } } },
+    { toolUse: { id: "t2", name: "write_file", input: { path: "b.txt", content: "x", step: 0, intent: "save a note" } } },
     { text: "a.txt mentions banana." },
   ]);
   const approvals: string[] = [];
@@ -86,7 +86,7 @@ test("a session can be fully rebuilt from its log", async () => {
 });
 
 test("stops after the maximum number of turns", async () => {
-  const loop = { toolUse: { id: "t", name: "read_file", input: { path: "a.txt", intent: "again" } } };
+  const loop = { toolUse: { id: "t", name: "read_file", input: { path: "a.txt", step: 0, intent: "again" } } };
   const mock = startMockAnthropic([loop, { ...loop }, { ...loop }, { ...loop }]);
   try {
     const result = await runSession({
@@ -201,7 +201,7 @@ test("stopping while an approval is pending ends the run as aborted", async () =
 
 test("blocks paths outside the workspace before asking the user", async () => {
   const mock = startMockAnthropic([
-    { toolUse: { id: "t1", name: "read_file", input: { path: "../outside.txt", intent: "peek outside" } } },
+    { toolUse: { id: "t1", name: "read_file", input: { path: "../outside.txt", step: 0, intent: "peek outside" } } },
     { text: "I could not read it." },
   ]);
   const approvals: string[] = [];
@@ -238,7 +238,7 @@ test("blocks paths outside the workspace before asking the user", async () => {
 
 test("requires an approved plan before writing files", async () => {
   const mock = startMockAnthropic([
-    { toolUse: { id: "t1", name: "write_file", input: { path: "nope.txt", content: "x", intent: "save" } } },
+    { toolUse: { id: "t1", name: "write_file", input: { path: "nope.txt", content: "x", step: 0, intent: "save" } } },
     { text: "I need a plan first." },
   ]);
   const approvals: string[] = [];
@@ -266,7 +266,7 @@ test("requires an approved plan before writing files", async () => {
 test("a denied plan keeps later writes blocked", async () => {
   const mock = startMockAnthropic([
     { toolUse: { id: "p1", name: "propose_plan", input: { steps: ["write a file"], intent: "plan" } } },
-    { toolUse: { id: "w1", name: "write_file", input: { path: "denied-plan.txt", content: "x", intent: "write" } } },
+    { toolUse: { id: "w1", name: "write_file", input: { path: "denied-plan.txt", content: "x", step: 0, intent: "write" } } },
     { text: "ok" },
   ]);
   try {
@@ -296,7 +296,7 @@ test("a denied plan keeps later writes blocked", async () => {
 test("the edited plan is returned to the model and reaches the next request", async () => {
   const mock = startMockAnthropic([
     { toolUse: { id: "p1", name: "propose_plan", input: { steps: ["Read a.txt", "Write b.txt"], intent: "plan" } } },
-    { toolUse: { id: "w1", name: "write_file", input: { path: "edited.txt", content: "hello", intent: "write" } } },
+    { toolUse: { id: "w1", name: "write_file", input: { path: "edited.txt", content: "hello", step: 0, intent: "write" } } },
     { text: "done" },
   ]);
   try {
@@ -353,7 +353,7 @@ test("loads SEAM.md into the system prompt and logs it", async () => {
 test("resumes an interrupted run by closing its open tool calls", async () => {
   // 先跑一个正常会话，再把日志截断在 tool_call 之后，模拟进程中途退出
   const first = startMockAnthropic([
-    { toolUse: { id: "t1", name: "read_file", input: { path: "a.txt", intent: "read" } } },
+    { toolUse: { id: "t1", name: "read_file", input: { path: "a.txt", step: 0, intent: "read" } } },
     { text: "done before crash" },
   ]);
   let truncatedPath = "";

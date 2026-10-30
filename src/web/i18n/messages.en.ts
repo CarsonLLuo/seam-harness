@@ -81,6 +81,7 @@ export const en = {
 
   modelSays: "The model says:",
   intentMissing: "(the model gave no reason)",
+  stepTag: (n: number) => `(plan step ${n})`,
   permission: {
     allowAuto: "Allowed automatically",
     allowUser: "Approved by you",
@@ -142,8 +143,34 @@ export const en = {
     last: "Last step",
   },
 
+  map: {
+    title: "Task map",
+    empty: "No approved plan yet. Reading files needs no plan; before the first write or command, the agent proposes one.",
+    source: "Progress comes from the model's own account: on every tool call it says which step it is on.",
+    edited: "You edited this plan",
+    status: { done: "Done", current: "In progress", pending: "Not started" },
+    offPlan: "Calls outside the plan",
+    offPlanReason: (step: number | undefined) =>
+      step === undefined ? "no step given" : step === 0 ? "the model says it is not in the plan" : `step ${step} is not in the plan`,
+    outcome: { running: "Running", ok: "", denied: "Denied", error: "Error" },
+  },
+
+  coverage: {
+    title: "Reading",
+    run: (n: number) => `Message ${n}`,
+    summary: (fresh: number, read: number, total: number) => `Read ${fresh} files this time; ${read} of ${total} so far`,
+    thisRun: (detail: string) => `this time: ${detail}`,
+    basis: "Counts only what the agent actually read with read_file.",
+    full: (total: number) => `all ${total} lines`,
+    partial: (ranges: [number, number][], total: number) =>
+      `lines ${ranges.map(([a, b]) => `${a}–${b}`).join(", ")} of ${total}`,
+    injected: "Injected by the harness",
+    truncated: (n: number) => `Too many files; showing the first ${n}.`,
+    missing: "The workspace folder no longer exists; showing only files read in the log.",
+  },
+
   raw: {
-    toggle: "Raw records",
+    toggle: "Side panel",
     title: "Raw record",
     close: "Close",
     empty: "Click “View raw record” on a turn or tool call to see exactly what was sent or returned.",

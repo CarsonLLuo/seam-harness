@@ -25,6 +25,14 @@ const intent = Type.String({
   description: "One short sentence explaining why you are calling this tool. Shown to the user.",
 });
 
+// 模型自报这次调用属于计划的第几步；界面的任务地图据此标出当前步，并标注为模型自述
+const step = Type.Integer({
+  minimum: 0,
+  description:
+    "Which step of the approved plan this call belongs to (1-based). Use 0 if there is no approved plan yet " +
+    "or this call is not part of the plan. Shown to the user.",
+});
+
 /**
  * 把工具参数里的路径解析成工作区内的绝对路径。越界时抛出带解释的错误，模型会收到这条错误。
  */
@@ -177,6 +185,17 @@ async function* walk(dir: string): AsyncGenerator<string> {
   }
 }
 
+/** 列出工作区里的文件（相对路径，排序），跳过 .git 和 node_modules；最多 max 个 */
+export async function listWorkspaceFiles(workspace: string, max: number): Promise<{ files: string[]; truncated: boolean }> {
+  const root = realpathSync(workspace);
+  const files: string[] = [];
+  for await (const file of walk(root)) {
+    if (files.length >= max) return { files: files.sort(), truncated: true };
+    files.push(relative(root, file));
+  }
+  return { files: files.sort(), truncated: false };
+}
+
 export function createTools(workspace: string): AgentTool<any>[] {
   const root = realpathSync(workspace);
   const rel = (abs: string) => relative(root, abs) || ".";
@@ -192,6 +211,7 @@ export function createTools(workspace: string): AgentTool<any>[] {
       offset: Type.Optional(Type.Integer({ minimum: 1, description: "First line to read (1-based). Default 1." })),
       limit: Type.Optional(Type.Integer({ minimum: 1, description: `Number of lines. Default ${READ_LIMIT}.` })),
       intent,
+      step,
     }),
     async execute(_id, params) {
       const { path, offset = 1, limit = READ_LIMIT } = params as { path: string; offset?: number; limit?: number };
@@ -216,6 +236,7 @@ export function createTools(workspace: string): AgentTool<any>[] {
       path: Type.String({ description: "Path relative to the workspace root." }),
       content: Type.String({ description: "The full new content of the file." }),
       intent,
+      step,
     }),
     async execute(_id, params) {
       const { path, content } = params as { path: string; content: string };
@@ -241,6 +262,7 @@ export function createTools(workspace: string): AgentTool<any>[] {
       pattern: Type.String({ description: "JavaScript regular expression, e.g. 'export function \\w+'." }),
       path: Type.Optional(Type.String({ description: "Directory to search, relative to the workspace root. Default '.'." })),
       intent,
+      step,
     }),
     async execute(_id, params) {
       const { pattern, path = "." } = params as { pattern: string; path?: string };
@@ -276,6 +298,7 @@ export function createTools(workspace: string): AgentTool<any>[] {
     parameters: Type.Object({
       command: Type.String({ description: "The shell command to run." }),
       intent,
+      step,
     }),
     async execute(_id, params, signal) {
       const { command } = params as { command: string };

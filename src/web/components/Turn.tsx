@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { KEY_ARG } from "../../insight";
 import type { ReplayToolCall, ReplayTurn } from "../../replay";
 import type { ApprovalRequest } from "../api";
 import { useI18n } from "../i18n/i18n";
@@ -27,9 +28,6 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   run_command: SquareTerminal,
   propose_plan: ListChecks,
 };
-
-/** 工具调用最值得一眼看到的参数 */
-const KEY_ARG: Record<string, string> = { read_file: "path", write_file: "path", search: "pattern", run_command: "command" };
 
 function textOf(content: unknown[] | undefined): string {
   return (content ?? [])
@@ -49,7 +47,7 @@ export function UserMessage({ text }: { text: string }) {
 
 export function MarkdownText({ text }: { text: string }) {
   return (
-    <div className="prose prose-neutral max-w-none text-[14.5px] leading-[1.65] dark:prose-invert prose-p:my-2 prose-pre:bg-code-bg prose-pre:text-xs [&_:not(pre)>code]:text-sm prose-code:before:content-none prose-code:after:content-none prose-table:text-sm">
+    <div className="prose prose-neutral max-w-none text-[14.5px] leading-[1.65] dark:prose-invert prose-p:my-2 prose-pre:bg-code-bg prose-pre:text-xs [&_:not(pre)>code]:rounded [&_:not(pre)>code]:bg-muted [&_:not(pre)>code]:px-1 [&_:not(pre)>code]:py-0.5 [&_:not(pre)>code]:text-sm [&_:not(pre)>code]:font-normal prose-code:before:content-none prose-code:after:content-none prose-table:text-sm">
       <Markdown remarkPlugins={[remarkGfm]}>{text}</Markdown>
     </div>
   );
@@ -90,7 +88,10 @@ export function Turn({
         <div className="mb-1.5 flex min-w-0 items-center gap-2 text-xs whitespace-nowrap text-muted-foreground">
           <span className="shrink-0 font-medium">{t.turn(turn.turn)}</span>
           {request && (
-            <button onClick={() => onRaw(request)} className="min-w-0 truncate rounded px-1 hover:bg-accent/70 hover:text-foreground">
+            <button
+              onClick={() => onRaw(request)}
+              className="min-w-0 truncate rounded px-1 opacity-0 transition-opacity group-focus-within/turn:opacity-100 group-hover/turn:opacity-100 hover:bg-accent/70 hover:text-foreground"
+            >
               {t.request(body?.messages?.length ?? 0, body?.tools?.length ?? 0)}
             </button>
           )}
@@ -98,7 +99,11 @@ export function Turn({
         </div>
 
         {text ? (
-          <MarkdownText text={text} />
+          // 模型写的文字（包括最终回答）都是模型自述，用一个小标签标出来
+          <div title={t.source.model}>
+            <div className="text-xs font-medium text-self-report">{t.source.model}</div>
+            <MarkdownText text={text} />
+          </div>
         ) : (
           !turn.assistant &&
           turn.toolCalls.length === 0 && (
@@ -111,7 +116,7 @@ export function Turn({
         {turn.assistant?.errorMessage && !stopped && <p className="mt-2 text-sm text-destructive">{turn.assistant.errorMessage}</p>}
 
         {turn.toolCalls.length > 0 && (
-          <div className={cn("space-y-1.5", text && "mt-3")}>
+          <div className={cn("space-y-1", text && "mt-3")}>
             {turn.toolCalls.map((c) => (
               <ToolCallRow
                 key={c.call.toolCallId}
@@ -179,13 +184,8 @@ function ToolCallRow({
         : t.permission.allowUser;
 
   return (
-    <Collapsible
-      className={cn(
-        "rounded-lg border border-border bg-card",
-        animate && "animate-in fade-in duration-150 ease-smooth",
-      )}
-    >
-      <CollapsibleTrigger className="group/row flex w-full items-center gap-2 px-3 py-2 text-left text-sm">
+    <Collapsible className={cn(animate && "animate-in fade-in duration-150 ease-smooth")}>
+      <CollapsibleTrigger className="group/row flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-accent/50">
         <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]/row:rotate-90" />
         <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
         {/* 状态靠文字表达：进行中有微光扫过，完成后变成次要灰，只有被拒绝或出错才出现颜色 */}
@@ -196,33 +196,34 @@ function ToolCallRow({
         {result && (denied || result.isError) && <X className="ml-auto h-3.5 w-3.5 shrink-0 text-destructive" />}
       </CollapsibleTrigger>
 
-      {/* 模型自述：专用颜色、虚线竖条、明确标注；始终可见 */}
-      <div className="mx-3 mb-2 border-l-2 border-dashed border-self-report pl-2 text-sm text-self-report" title={t.source.model}>
-        <span className="font-medium">{t.modelSays}</span>{" "}
-        <span className="italic">{typeof args.intent === "string" ? args.intent : t.intentMissing}</span>
+      {/* 模型自述：标签用专用颜色明确标注，内容用次要灰，和工具名左对齐；始终可见 */}
+      <div className="pr-2 pb-1 pl-[54px] text-sm text-muted-foreground" title={t.source.model}>
+        <span className="font-medium text-self-report">{t.modelSays}</span>{" "}
+        {typeof args.intent === "string" ? args.intent : t.intentMissing}
+        {typeof args.step === "number" && args.step > 0 && <span> {t.stepTag(args.step)}</span>}
       </div>
 
       {/* 待确认的请求不在工具行里展开：它显示在对话底部、输入框上方 */}
 
       {/* harness 的拦截原因：不用展开就能看到 */}
       {permission?.code === "outside_workspace" && (
-        <div className="mx-3 mb-2 rounded-md border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-xs leading-relaxed text-destructive">
+        <div className="mt-1 mr-2 mb-1 ml-[54px] rounded-md border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-xs leading-relaxed text-destructive">
           {t.permission.outsideWorkspace(permission.path ?? "")}
         </div>
       )}
       {permission?.code === "plan_required" && (
-        <div className="mx-3 mb-2 text-xs leading-relaxed text-muted-foreground">{t.permission.planRequiredHint}</div>
+        <div className="pr-2 pb-1 pl-[54px] text-xs leading-relaxed text-muted-foreground">{t.permission.planRequiredHint}</div>
       )}
       {permission?.code === "not_executed" && (
-        <div className="mx-3 mb-2 text-xs leading-relaxed text-muted-foreground">{t.permission.notExecutedHint}</div>
+        <div className="pr-2 pb-1 pl-[54px] text-xs leading-relaxed text-muted-foreground">{t.permission.notExecutedHint}</div>
       )}
 
       {/* harness 记录的事实：展开后可见。高度动画放在外层，内边距放在内层，收起时高度才能真正归零 */}
       <CollapsibleContent
-        className="overflow-hidden border-t border-border/60 data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down duration-200 ease-smooth"
+        className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down duration-200 ease-smooth"
         title={t.source.harness}
       >
-        <div className="px-3 py-2 text-sm">
+        <div className="mt-1 mr-2 mb-1 ml-[54px] rounded-lg bg-muted/40 px-3 py-2 text-sm">
           <div className={cn(denied ? "text-destructive" : "text-foreground")}>
             {permissionLabel}
             {permission?.reason && <span className="text-muted-foreground"> — {permission.reason}</span>}

@@ -81,6 +81,7 @@ export const zh: Messages = {
 
   modelSays: "模型说：",
   intentMissing: "（模型没有给出理由）",
+  stepTag: (n) => `（计划第 ${n} 步）`,
   permission: {
     allowAuto: "自动放行",
     allowUser: "你已批准",
@@ -140,8 +141,32 @@ export const zh: Messages = {
     last: "最后一步",
   },
 
+  map: {
+    title: "任务地图",
+    empty: "还没有批准的计划。读取文件不需要计划；第一次写文件或执行命令前，agent 会先提出计划。",
+    source: "步骤进度来自模型自述：每次调用工具时，它会说明自己在做第几步。",
+    edited: "你修改过这个计划",
+    status: { done: "已完成", current: "进行中", pending: "未开始" },
+    offPlan: "计划外的调用",
+    offPlanReason: (step) => (step === undefined ? "没有给出步号" : step === 0 ? "模型说不在计划里" : `第 ${step} 步不在计划里`),
+    outcome: { running: "进行中", ok: "", denied: "已拒绝", error: "出错" },
+  },
+
+  coverage: {
+    title: "阅读覆盖",
+    run: (n) => `第 ${n} 次提问`,
+    summary: (fresh, read, total) => `这次读了 ${fresh} 个文件，累计读过 ${read} / ${total} 个`,
+    thisRun: (detail) => `这次${detail}`,
+    basis: "只算 agent 用 read_file 实际读到的内容。",
+    full: (total) => `全部 ${total} 行`,
+    partial: (ranges, total) => `第 ${ranges.map(([a, b]) => `${a}–${b}`).join("、")} 行，共 ${total} 行`,
+    injected: "harness 注入",
+    truncated: (n) => `文件太多，只列出前 ${n} 个。`,
+    missing: "工作区文件夹已不存在，只显示日志里读过的文件。",
+  },
+
   raw: {
-    toggle: "原始记录",
+    toggle: "侧边面板",
     title: "原始记录",
     close: "关闭",
     empty: "点击某一轮或某次工具调用的“查看原始记录”，就能看到实际发出或返回的内容。",
