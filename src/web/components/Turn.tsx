@@ -50,7 +50,7 @@ export function UserMessage({ text }: { text: string }) {
 
 export function MarkdownText({ text }: { text: string }) {
   return (
-    <div className="prose prose-neutral max-w-none text-[15px] leading-relaxed dark:prose-invert prose-p:my-2 prose-pre:bg-code-bg prose-pre:text-[13px] prose-code:before:content-none prose-code:after:content-none prose-table:text-sm">
+    <div className="prose prose-neutral max-w-none text-[15px] leading-relaxed dark:prose-invert prose-p:my-2 prose-pre:bg-code-bg prose-pre:text-xs [&_:not(pre)>code]:text-sm prose-code:before:content-none prose-code:after:content-none prose-table:text-sm">
       <Markdown remarkPlugins={[remarkGfm]}>{text}</Markdown>
     </div>
   );
@@ -190,8 +190,8 @@ function ToolCallRow({
       <CollapsibleTrigger className="group/row flex w-full items-center gap-2 px-3 py-2 text-left text-sm">
         <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]/row:rotate-90" />
         <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <span className="font-mono text-[13px]">{name}</span>
-        {typeof keyArg === "string" && <span className="min-w-0 truncate font-mono text-[13px] text-muted-foreground">{keyArg}</span>}
+        <span className="font-mono text-xs">{name}</span>
+        {typeof keyArg === "string" && <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">{keyArg}</span>}
         <StatusIcon
           className={cn(
             "ml-auto h-3.5 w-3.5 shrink-0",

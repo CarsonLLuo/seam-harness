@@ -74,10 +74,10 @@ export const zh: Messages = {
   },
 
   turn: (n) => `第 ${n} 轮`,
-  request: (messages, tools) => `已发送 ${messages} 条消息 · ${tools} 个工具`,
+  request: (messages, tools) => `已发送 ${messages} 条消息和 ${tools} 个工具`,
   thinking: "正在等待模型……",
-  tokens: (input, output) => `输入 ${input} 个 token · 输出 ${output} 个`,
-  runEnded: (status, seconds) => `${status} · ${seconds} 秒`,
+  tokens: (input, output) => `输入 ${input} 个 token，输出 ${output} 个`,
+  runEnded: (status, seconds) => `${status}，用时 ${seconds} 秒`,
 
   modelSays: "模型说：",
   intentMissing: "（模型没有给出理由）",

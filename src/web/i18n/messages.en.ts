@@ -74,10 +74,10 @@ export const en = {
   },
 
   turn: (n: number) => `Turn ${n}`,
-  request: (messages: number, tools: number) => `${messages} messages · ${tools} tools sent`,
+  request: (messages: number, tools: number) => `${messages} messages and ${tools} tools sent`,
   thinking: "Waiting for the model…",
-  tokens: (input: number, output: number) => `${input} tokens in · ${output} out`,
-  runEnded: (status: string, seconds: string) => `${status} · ${seconds} s`,
+  tokens: (input: number, output: number) => `${input} tokens in, ${output} out`,
+  runEnded: (status: string, seconds: string) => `${status}, ${seconds} s`,
 
   modelSays: "The model says:",
   intentMissing: "(the model gave no reason)",

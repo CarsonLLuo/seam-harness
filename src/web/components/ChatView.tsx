@@ -39,7 +39,7 @@ export function NewChat({ config, onCreated, ...view }: ViewProps & { config: Co
         <div className="w-full max-w-2xl">
           <h1 className="mb-2 text-center text-2xl font-semibold tracking-tight">{t.welcomeTitle}</h1>
           <p className="mx-auto mb-5 max-w-md text-center text-sm text-muted-foreground">{t.welcomeHint}</p>
-          <div className="mx-auto mb-8 flex w-fit max-w-full items-start gap-2 rounded-2xl bg-muted/50 px-4 py-2 text-[13px] text-muted-foreground">
+          <div className="mx-auto mb-8 flex w-fit max-w-full items-start gap-2 rounded-2xl bg-muted/50 px-4 py-2 text-sm text-muted-foreground">
             <Lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500/80" aria-label={t.tipLabel} />
             <span>{t.tips[tipIndex]}</span>
           </div>
@@ -91,7 +91,7 @@ export function NewChat({ config, onCreated, ...view }: ViewProps & { config: Co
                 <button
                   key={example}
                   onClick={() => setDraft(example)}
-                  className="rounded-xl border border-border bg-card px-3 py-2.5 text-left text-[13px] leading-snug text-muted-foreground shadow-xs transition-colors hover:bg-accent/60 hover:text-foreground"
+                  className="rounded-xl border border-border bg-card px-3 py-2.5 text-left text-sm leading-snug text-muted-foreground shadow-xs transition-colors hover:bg-accent/60 hover:text-foreground"
                 >
                   {example}
                 </button>

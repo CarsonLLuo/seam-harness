@@ -91,7 +91,7 @@ export function WorkspacePicker(props: {
             <DropdownMenuRadioItem key={path} value={path} title={path}>
               <div className="min-w-0">
                 <div className="truncate">{basename(path)}</div>
-                <div className="truncate font-mono text-[11px] text-muted-foreground">{path}</div>
+                <div className="truncate font-mono text-xs text-muted-foreground">{path}</div>
               </div>
             </DropdownMenuRadioItem>
           ))}

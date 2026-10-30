@@ -133,7 +133,7 @@ function DeleteDialog({
     >
       <AlertDialogContent className="max-w-sm">
         <AlertDialogHeader>
-          <AlertDialogTitle className="text-base">{t.deleteSession.title}</AlertDialogTitle>
+          <AlertDialogTitle className="text-[15px]">{t.deleteSession.title}</AlertDialogTitle>
           <AlertDialogDescription className="break-words">{session && t.deleteSession.body(session.task)}</AlertDialogDescription>
           {failed && <p className="text-sm text-destructive">{t.deleteSession.failed}</p>}
         </AlertDialogHeader>

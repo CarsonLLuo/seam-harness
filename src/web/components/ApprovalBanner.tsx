@@ -79,9 +79,9 @@ export function ApprovalBanner({
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline gap-2">
-              <span className="text-[14px] font-medium">{isPlan ? t.approval.planTitle : t.approval.title}</span>
+              <span className="text-sm font-medium">{isPlan ? t.approval.planTitle : t.approval.title}</span>
               {count > 1 && <span className="text-[12px] text-muted-foreground">+{count - 1}</span>}
-              <span className="ml-auto shrink-0 font-mono text-[11px] text-muted-foreground">{request.name}</span>
+              <span className="ml-auto shrink-0 font-mono text-xs text-muted-foreground">{request.name}</span>
               <button
                 type="button"
                 onClick={onStop}
@@ -105,8 +105,8 @@ export function ApprovalBanner({
           {isPlan ? (
             <ol className="space-y-1.5">
               {steps.map((step, i) => (
-                <li key={i} className="flex items-start gap-2 text-[13px] leading-snug">
-                  <span className="mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] tabular-nums text-muted-foreground">
+                <li key={i} className="flex items-start gap-2 text-sm leading-snug">
+                  <span className="mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs tabular-nums text-muted-foreground">
                     {i + 1}
                   </span>
                   {editing ? (
@@ -115,7 +115,7 @@ export function ApprovalBanner({
                         value={step}
                         onChange={(e) => setSteps((prev) => prev.map((s, j) => (j === i ? e.target.value : s)))}
                         aria-label={t.approval.stepLabel(i + 1)}
-                        className="-my-1 h-7 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-[13px] outline-none transition-colors focus-visible:border-ring/50"
+                        className="-my-1 h-7 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-sm outline-none transition-colors focus-visible:border-ring/50"
                       />
                       <button
                         type="button"
@@ -150,11 +150,11 @@ export function ApprovalBanner({
           ) : request.preview?.kind === "write_file" ? (
             <div className="overflow-hidden rounded-lg border border-border/60">
               <div className="flex items-center gap-2 bg-muted/40 px-2.5 py-1.5">
-                <span className="rounded bg-background px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                <span className="rounded bg-background px-1.5 py-0.5 text-xs text-muted-foreground">
                   {request.preview.created ? t.approval.writeCreate : t.approval.writeOverwrite}
                 </span>
                 <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{request.preview.path}</span>
-                <span className="shrink-0 font-mono text-[11px] tabular-nums">
+                <span className="shrink-0 font-mono text-xs tabular-nums">
                   <span className="text-fact">+{request.preview.added}</span>{" "}
                   <span className="text-destructive">−{request.preview.removed}</span>
                 </span>
@@ -228,8 +228,9 @@ export function ApprovalBanner({
           </>
         ) : (
           <>
-            <span className="mr-auto truncate text-[11px] text-muted-foreground/60">
-              {t.approval.requestedBy} · {t.approval.enterHint}
+            <span className="mr-auto flex min-w-0 gap-3 truncate text-xs text-muted-foreground/60">
+              <span className="truncate">{t.approval.requestedBy}</span>
+              <span className="shrink-0">{t.approval.enterHint}</span>
             </span>
             {isPlan && (
               <Button
