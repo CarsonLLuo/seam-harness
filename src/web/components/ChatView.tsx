@@ -1,4 +1,4 @@
-import { History, PanelRight } from "lucide-react";
+import { Cpu, FolderOpen, History, PanelRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { SeamEvent } from "../../events";
 import { reconstruct } from "../../replay";
@@ -181,18 +181,8 @@ export function SessionChat({
     <div className="flex min-w-0 flex-1 flex-col animate-in fade-in duration-150 ease-smooth">
       <Header
         title={start.task}
-        meta={
-          <>
-            {/* 完成是默认状态，不标 */}
-            {status !== "completed" && <StatusBadge status={status} />}
-            <span className="shrink-0" title={`${start.model.provider}/${start.model.id}`}>
-              {start.model.id}
-            </span>
-            <span className="min-w-0 truncate" title={start.workspace}>
-              {basename(start.workspace)}
-            </span>
-          </>
-        }
+        // 完成是默认状态，不标
+        meta={status !== "completed" && <StatusBadge status={status} />}
         actions={
           <IconButton label={replaying ? t.replay.exit : t.replay.toggle} active={replaying} onClick={toggleReplay} disabled={running || steps.length === 0}>
             <History />
@@ -246,6 +236,19 @@ export function SessionChat({
                   throw err;
                 }
               }}
+              // 和新会话页放在同一个位置；会话开始后不能再换，所以只显示、不带下拉
+              toolbar={
+                <>
+                  <span className="flex h-8 shrink-0 items-center gap-1.5 px-2.5 text-[13px] text-muted-foreground" title={`${start.model.provider}/${start.model.id}`}>
+                    <Cpu className="size-3.5" />
+                    {start.model.id}
+                  </span>
+                  <span className="flex h-8 min-w-0 items-center gap-1.5 px-2.5 text-[13px] text-muted-foreground" title={start.workspace}>
+                    <FolderOpen className="size-3.5 shrink-0" />
+                    <span className="truncate">{basename(start.workspace)}</span>
+                  </span>
+                </>
+              }
             />
             {error && <p className="mt-2 text-center text-xs text-destructive">{error}</p>}
           </>
