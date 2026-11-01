@@ -3,6 +3,7 @@ import { ApiError, deleteSession, getConfig, listSessions, type Config, type Ses
 import { useI18n } from "./i18n/i18n";
 import { NewChat, SessionChat } from "./components/ChatView";
 import { RawPanel, type PanelSession, type PanelTab } from "./components/RawPanel";
+import { SettingsDialog } from "./components/SettingsDialog";
 import { Sidebar } from "./components/Sidebar";
 import { initialSelection, loadLastView, saveLastView } from "./startup";
 import { applyTheme, loadThemePref, THEME_STORAGE_KEY, type ThemePref } from "./theme";
@@ -24,6 +25,7 @@ export function App() {
   const [ready, setReady] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_KEY) === "1");
   const [theme, setTheme] = useState<ThemePref>(loadThemePref);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => applyTheme(theme), [theme]);
 
@@ -34,12 +36,16 @@ export function App() {
     });
   }, []);
 
-  // ⌘B / Ctrl+B 收起或展开侧栏
+  // ⌘B / Ctrl+B 收起或展开侧栏；⌘, / Ctrl+, 打开设置
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "b") {
+      if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return;
+      if (e.key.toLowerCase() === "b") {
         e.preventDefault();
         toggleCollapsed();
+      } else if (e.key === ",") {
+        e.preventDefault();
+        setSettingsOpen(true);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -68,6 +74,11 @@ export function App() {
     saveLastView(id);
     setRaw(undefined);
     setPanelSession(null);
+  };
+
+  const changeTheme = (pref: ThemePref) => {
+    localStorage.setItem(THEME_STORAGE_KEY, pref);
+    setTheme(pref);
   };
 
   const view = {
@@ -107,10 +118,8 @@ export function App() {
           collapsed={collapsed}
           onToggleCollapsed={toggleCollapsed}
           theme={theme}
-          onThemeChange={(pref) => {
-            localStorage.setItem(THEME_STORAGE_KEY, pref);
-            setTheme(pref);
-          }}
+          onThemeChange={changeTheme}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
         <main className="flex min-w-0 flex-1 bg-content-area">
           {!ready ? null : selected ? (
@@ -137,6 +146,7 @@ export function App() {
           session={panelSession}
         />
       </div>
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} theme={theme} onThemeChange={changeTheme} />
     </TooltipProvider>
   );
 }

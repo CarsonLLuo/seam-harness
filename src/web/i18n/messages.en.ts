@@ -2,8 +2,28 @@
 export const en = {
   appName: "Seam",
   newSession: "New session",
-  language: "中文",
-  languageHint: "Switch to Chinese",
+  languageName: "English",
+  settings: {
+    open: "Settings…",
+    title: "Settings",
+    language: "Language",
+    sections: {
+      general: "General",
+      models: "Models",
+      workspace: "Workspace",
+      permissions: "Permissions",
+      about: "About",
+    },
+    comingSoon: "Coming soon",
+    planned: {
+      models: "Manage model providers and API keys, and pick a default model. For now, put API keys in .env.",
+      workspace: "Set the folder new sessions start in. For now, pick a folder in the message box.",
+      permissions: "Choose whether writing files and running commands need your confirmation. For now, Seam always asks.",
+    },
+    shortcuts: "Shortcuts",
+    shortcutSidebar: "Collapse sidebar",
+    shortcutSettings: "Open settings",
+  },
   noSessions: "No sessions yet.",
   collapseSidebar: "Collapse sidebar",
   expandSidebar: "Expand sidebar",
@@ -31,7 +51,6 @@ export const en = {
   },
 
   welcomeTitle: "What should the agent do?",
-  welcomeHint: "Seam shows what the agent actually reads, what it asks to do, and what is only its own account.",
   composerPlaceholder: "Describe a task for this folder…",
   followUpPlaceholder: "Ask a follow-up…",
   replayingPlaceholder: "Turn off replay to send a message.",
@@ -45,7 +64,6 @@ export const en = {
   typePath: "Type a path…",
   noProviders: "No API key found. Add one to .env and restart Seam.",
   readOnlyHint: "Writing files and running commands ask for your approval.",
-  tipLabel: "Tip",
   /** 空白页随机显示一条：每条纠正一个关于 agent 的常见误解 */
   tips: [
     "The agent only knows what it has actually read. Files it never opened are invisible to it.",
@@ -56,7 +74,6 @@ export const en = {
     "Replay lets you step through a session to see at which point the agent made each decision.",
     "Some of what is sent to the model was not written by you: the harness adds content to every request.",
   ],
-  examplesLabel: "Try one of these",
   examples: [
     "Find all exported functions that have no tests, and list them with their files.",
     "Summarize what each file in this folder is for.",

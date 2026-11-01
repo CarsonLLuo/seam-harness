@@ -25,7 +25,7 @@ export function ModelPicker(props: {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs text-muted-foreground" aria-label={t.model} title={current}>
+        <Button variant="ghost" size="sm" className="h-8 gap-1.5 rounded-full px-2.5 text-[13px] font-normal text-muted-foreground" aria-label={t.model} title={current}>
           <Cpu className="!size-3.5" />
           {props.value?.model ?? t.model}
           <ChevronDown className="!size-3" />

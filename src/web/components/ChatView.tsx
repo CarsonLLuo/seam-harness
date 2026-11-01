@@ -1,4 +1,4 @@
-import { History, Lightbulb, PanelRight } from "lucide-react";
+import { History, PanelRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { SeamEvent } from "../../events";
 import { reconstruct } from "../../replay";
@@ -15,7 +15,7 @@ import { initialModelChoice, loadModelChoice, saveModelChoice } from "../model-c
 import { ReplayBar } from "./ReplayBar";
 import { StatusBadge } from "./StatusBadge";
 import { Turn } from "./Turn";
-import { WorkspacePicker } from "./WorkspacePicker";
+import { basename, WorkspacePicker } from "./WorkspacePicker";
 
 interface ViewProps {
   rawOpen: boolean;
@@ -35,15 +35,10 @@ export function NewChat({ config, onCreated, ...view }: ViewProps & { config: Co
 
   return (
     <div className="flex min-w-0 flex-1 flex-col animate-in fade-in duration-150 ease-smooth">
-      <Header title={t.newSession} {...view} />
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6">
-        <div className="w-full max-w-2xl">
-          <h1 className="mb-2 text-center text-2xl font-semibold tracking-tight">{t.welcomeTitle}</h1>
-          <p className="mx-auto mb-5 max-w-md text-center text-sm text-muted-foreground">{t.welcomeHint}</p>
-          <div className="mx-auto mb-8 flex w-fit max-w-full items-start gap-2 rounded-2xl bg-muted/50 px-4 py-2 text-sm text-muted-foreground">
-            <Lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500/80" aria-label={t.tipLabel} />
-            <span>{t.tips[tipIndex]}</span>
-          </div>
+      <Header title="" {...view} />
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 pb-[12vh]">
+        <div className="w-full max-w-[740px]">
+          <h1 className="mb-7 text-center text-[28px] font-medium tracking-tight">{t.welcomeTitle}</h1>
           {config.providers.length === 0 && <p className="mb-3 text-center text-sm text-destructive">{t.noProviders}</p>}
           <Composer
             placeholder={t.composerPlaceholder}
@@ -84,20 +79,20 @@ export function NewChat({ config, onCreated, ...view }: ViewProps & { config: Co
               </>
             }
           />
-          <p className="mt-2 text-center text-xs text-muted-foreground">{error ?? t.readOnlyHint}</p>
-          <div className="mt-8">
-            <div className="mb-2 text-xs font-medium text-muted-foreground">{t.examplesLabel}</div>
-            <div className="grid gap-2 sm:grid-cols-3">
-              {t.examples.map((example) => (
-                <button
-                  key={example}
-                  onClick={() => setDraft(example)}
-                  className="rounded-xl border border-border bg-card px-3 py-2.5 text-left text-sm leading-snug text-muted-foreground shadow-xs transition-colors hover:bg-accent/60 hover:text-foreground"
-                >
-                  {example}
-                </button>
-              ))}
-            </div>
+          {/* 一句随机的小提示 + 确认规则；出错时换成错误信息 */}
+          <p className={`mt-2.5 text-center text-xs ${error ? "text-destructive" : "text-muted-foreground"}`}>
+            {error ?? `${t.tips[tipIndex]} ${t.readOnlyHint}`}
+          </p>
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
+            {t.examples.map((example) => (
+              <button
+                key={example}
+                onClick={() => setDraft(example)}
+                className="rounded-full border border-border px-3.5 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                {example}
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -188,12 +183,13 @@ export function SessionChat({
         title={start.task}
         meta={
           <>
-            <StatusBadge status={status} />
-            <span className="shrink-0">
-              {start.model.provider}/{start.model.id}
+            {/* 完成是默认状态，不标 */}
+            {status !== "completed" && <StatusBadge status={status} />}
+            <span className="shrink-0" title={`${start.model.provider}/${start.model.id}`}>
+              {start.model.id}
             </span>
-            <span className="min-w-0 truncate font-mono" title={start.workspace}>
-              {start.workspace}
+            <span className="min-w-0 truncate" title={start.workspace}>
+              {basename(start.workspace)}
             </span>
           </>
         }
@@ -206,7 +202,7 @@ export function SessionChat({
       />
 
       <Conversation className="min-h-0 flex-1">
-        <ConversationContent className="mx-auto w-full max-w-3xl gap-6 px-6 pt-6 pb-10">
+        <ConversationContent className="mx-auto w-full max-w-[740px] gap-7 px-6 pt-4 pb-10">
           {session.turns.map((turn, index) => (
             <Turn
               key={turn.turn}
@@ -221,7 +217,7 @@ export function SessionChat({
         <ConversationScrollButton />
       </Conversation>
 
-      <div className="mx-auto w-full max-w-3xl px-6 pb-5">
+      <div className="mx-auto w-full max-w-[740px] px-6 pb-4">
         {/* 等待确认时横幅替代输入框：这时既不能追问，停止也放在横幅里 */}
         {pendingApprovals[0] ? (
           <ApprovalBanner
@@ -262,12 +258,10 @@ export function SessionChat({
 function Header(props: ViewProps & { title: string; meta?: React.ReactNode; actions?: React.ReactNode }) {
   const { t } = useI18n();
   return (
-    <header className="flex min-h-12 shrink-0 items-center gap-3 border-b border-border/70 px-4 py-2">
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium">{props.title}</div>
-        {props.meta && (
-          <div className="mt-0.5 flex min-w-0 items-center gap-3 text-xs whitespace-nowrap text-muted-foreground">{props.meta}</div>
-        )}
+    <header className="flex h-13 shrink-0 items-center gap-1 px-4">
+      <div className="flex min-w-0 flex-1 items-baseline gap-3 whitespace-nowrap">
+        <div className="min-w-0 truncate text-[15px] font-medium">{props.title}</div>
+        {props.meta && <div className="flex min-w-0 shrink items-center gap-3 text-xs text-muted-foreground">{props.meta}</div>}
       </div>
       {props.actions}
       <IconButton label={t.raw.toggle} active={props.rawOpen} onClick={props.onToggleRaw}>

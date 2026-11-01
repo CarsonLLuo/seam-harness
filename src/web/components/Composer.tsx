@@ -35,7 +35,7 @@ export function Composer(props: {
   };
 
   return (
-    <div className="rounded-2xl border border-border bg-input-surface p-2 shadow-sm transition-colors focus-within:border-ring/40">
+    <div className="rounded-[24px] border border-border bg-input-surface px-2.5 pt-2.5 pb-2 shadow-sm transition-colors focus-within:border-ring/30">
       <Textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -49,14 +49,14 @@ export function Composer(props: {
         placeholder={props.placeholder}
         disabled={props.disabled}
         rows={1}
-        className="max-h-60 min-h-[44px] resize-none border-0 bg-transparent px-2 py-1.5 text-[14.5px] shadow-none [field-sizing:content] hover:border-0 focus-visible:bg-transparent focus-visible:ring-0 md:text-[14.5px]"
+        className="max-h-60 min-h-[44px] resize-none border-0 bg-transparent px-2.5 py-1.5 text-[15px] shadow-none [field-sizing:content] hover:border-0 focus-visible:bg-transparent focus-visible:ring-0 md:text-[15px]"
       />
       <div className="mt-1 flex items-center gap-2">
         <div className="flex min-w-0 flex-1 items-center gap-1.5">{props.toolbar}</div>
         <Button
           size="icon"
           variant={props.running ? "secondary" : "default"}
-          className="h-8 w-8 rounded-full"
+          className="h-9 w-9 rounded-full"
           onClick={props.running ? props.onStop : () => void submit()}
           disabled={!props.running && !canSend}
           aria-label={props.running ? t.stop : t.send}

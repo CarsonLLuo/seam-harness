@@ -14,7 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-const basename = (path: string) => path.replace(/\/+$/, "").split("/").pop() || path;
+export const basename = (path: string) => path.replace(/\/+$/, "").split("/").pop() || path;
 
 /** 输入框工具栏里的工作区选择：最近用过的文件夹、系统对话框选择、手动输入路径 */
 export function WorkspacePicker(props: {
@@ -74,7 +74,7 @@ export function WorkspacePicker(props: {
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 min-w-0 gap-1.5 px-2 text-xs text-muted-foreground"
+          className="h-8 min-w-0 gap-1.5 rounded-full px-2.5 text-[13px] font-normal text-muted-foreground"
           aria-label={t.workspace}
           title={props.value}
           disabled={picking}

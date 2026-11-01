@@ -43,13 +43,13 @@ export function RawPanel({
         open ? "w-[clamp(280px,34vw,460px)]" : "w-0",
       )}
     >
-      <div className="flex h-full w-[clamp(280px,34vw,460px)] flex-col border-l border-border/70 bg-sidebar-surface">
+      <div className="flex h-full w-[clamp(280px,34vw,460px)] flex-col border-l border-border bg-sidebar-surface">
         <Tabs value={tab} onValueChange={(v) => onTab(v as PanelTab)} className="flex min-h-0 flex-1 flex-col">
-          <div className="flex h-12 items-center justify-between border-b border-border/70 pr-2 pl-3">
-            <TabsList>
-              {session && <TabsTrigger value="map">{t.map.title}</TabsTrigger>}
-              {session && <TabsTrigger value="coverage">{t.coverage.title}</TabsTrigger>}
-              <TabsTrigger value="raw">{t.raw.title}</TabsTrigger>
+          <div className="flex h-13 items-center justify-between pr-2 pl-3">
+            <TabsList className="h-auto gap-0.5 bg-transparent p-0">
+              {session && <TabsTrigger value="map" className="rounded-lg px-2.5 py-1 font-normal data-[state=active]:bg-accent data-[state=active]:shadow-none">{t.map.title}</TabsTrigger>}
+              {session && <TabsTrigger value="coverage" className="rounded-lg px-2.5 py-1 font-normal data-[state=active]:bg-accent data-[state=active]:shadow-none">{t.coverage.title}</TabsTrigger>}
+              <TabsTrigger value="raw" className="rounded-lg px-2.5 py-1 font-normal data-[state=active]:bg-accent data-[state=active]:shadow-none">{t.raw.title}</TabsTrigger>
             </TabsList>
             <IconButton label={t.raw.close} onClick={onClose}>
               <X />

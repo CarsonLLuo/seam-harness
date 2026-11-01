@@ -3,8 +3,28 @@ import type { Messages } from "./messages.en";
 export const zh: Messages = {
   appName: "Seam",
   newSession: "新会话",
-  language: "English",
-  languageHint: "切换为英文",
+  languageName: "简体中文",
+  settings: {
+    open: "设置…",
+    title: "设置",
+    language: "语言",
+    sections: {
+      general: "通用",
+      models: "模型",
+      workspace: "工作区",
+      permissions: "权限",
+      about: "关于",
+    },
+    comingSoon: "待开发",
+    planned: {
+      models: "在这里管理模型供应商和 API Key、选择默认模型。目前请在 .env 里填写 API Key。",
+      workspace: "在这里设置新会话默认使用的文件夹。目前可以在输入框里选择文件夹。",
+      permissions: "在这里设置写文件和执行命令前是否需要你确认。目前每次都会询问。",
+    },
+    shortcuts: "快捷键",
+    shortcutSidebar: "收起侧栏",
+    shortcutSettings: "打开设置",
+  },
   noSessions: "还没有会话。",
   collapseSidebar: "收起侧栏",
   expandSidebar: "展开侧栏",
@@ -32,7 +52,6 @@ export const zh: Messages = {
   },
 
   welcomeTitle: "想让 agent 做什么？",
-  welcomeHint: "Seam 会让你看到 agent 实际读了什么、请求做什么，以及哪些只是它自己的说法。",
   composerPlaceholder: "描述你希望在这个文件夹里完成的任务……",
   followUpPlaceholder: "继续追问……",
   replayingPlaceholder: "关闭回放后才能发送消息。",
@@ -46,7 +65,6 @@ export const zh: Messages = {
   typePath: "输入路径……",
   noProviders: "没有找到 API Key。请在 .env 里填写后重启 Seam。",
   readOnlyHint: "写文件和执行命令需要你确认。",
-  tipLabel: "小提示",
   tips: [
     "agent 只知道它实际读过的内容，没打开过的文件它并不知道。",
     "紫色虚线旁的内容是模型自己的说法，不一定是它这样做的真实原因。",
@@ -56,7 +74,6 @@ export const zh: Messages = {
     "回放可以一步步重现会话，看看 agent 是在哪一步做出每个判断的。",
     "发给模型的内容里，有些不是你写的，而是 harness 在每次请求时自动加上的。",
   ],
-  examplesLabel: "试试这些",
   examples: [
     "找出所有没有测试的导出函数，列出它们所在的文件。",
     "总结这个文件夹里每个文件分别是做什么的。",

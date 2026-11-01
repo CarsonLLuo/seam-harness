@@ -40,14 +40,14 @@ function textOf(content: unknown[] | undefined): string {
 export function UserMessage({ text }: { text: string }) {
   return (
     <div className="flex justify-end">
-      <div className="max-w-[85%] rounded-2xl bg-secondary px-4 py-2.5 text-[14.5px] leading-[1.65] whitespace-pre-wrap">{text}</div>
+      <div className="max-w-[78%] rounded-[20px] bg-secondary px-4 py-2.5 text-[15px] leading-[1.6] whitespace-pre-wrap">{text}</div>
     </div>
   );
 }
 
 export function MarkdownText({ text }: { text: string }) {
   return (
-    <div className="prose prose-neutral max-w-none text-[14.5px] leading-[1.65] dark:prose-invert prose-p:my-2 prose-pre:bg-code-bg prose-pre:text-xs [&_:not(pre)>code]:rounded [&_:not(pre)>code]:bg-muted [&_:not(pre)>code]:px-1 [&_:not(pre)>code]:py-0.5 [&_:not(pre)>code]:text-sm [&_:not(pre)>code]:font-normal prose-code:before:content-none prose-code:after:content-none prose-table:text-sm">
+    <div className="prose prose-neutral max-w-none text-[15px] leading-[1.65] dark:prose-invert prose-p:my-2 prose-pre:bg-code-bg prose-pre:text-xs [&_:not(pre)>code]:rounded [&_:not(pre)>code]:bg-muted [&_:not(pre)>code]:px-1 [&_:not(pre)>code]:py-0.5 [&_:not(pre)>code]:text-sm [&_:not(pre)>code]:font-normal prose-code:before:content-none prose-code:after:content-none prose-table:text-sm">
       <Markdown remarkPlugins={[remarkGfm]}>{text}</Markdown>
     </div>
   );
@@ -99,8 +99,8 @@ export function Turn({
         </div>
 
         {text ? (
-          // 模型写的文字（包括最终回答）都是模型自述，用一个小标签标出来
-          <div title={t.source.model}>
+          // 模型写的文字（包括最终回答）都是模型自述：左侧紫色虚线 + 小标签
+          <div title={t.source.model} className="border-l-2 border-dashed border-self-report/60 pl-3">
             <div className="text-xs font-medium text-self-report">{t.source.model}</div>
             <MarkdownText text={text} />
           </div>
@@ -130,7 +130,13 @@ export function Turn({
         )}
 
         {turn.end && (
-          <div className="mt-3 text-xs text-muted-foreground tabular-nums">
+          // 正常完成的耗时只在悬停时显示；停止、出错等结果始终可见
+          <div
+            className={cn(
+              "mt-3 text-xs text-muted-foreground tabular-nums",
+              turn.end.reason === "completed" && "opacity-0 transition-opacity group-focus-within/turn:opacity-100 group-hover/turn:opacity-100",
+            )}
+          >
             {t.runEnded(t.status[turn.end.reason], (turn.end.durationMs / 1000).toFixed(1))}
             {turn.end.errorMessage && !stopped && <span className="text-destructive"> — {turn.end.errorMessage}</span>}
           </div>
@@ -185,7 +191,7 @@ function ToolCallRow({
 
   return (
     <Collapsible className={cn(animate && "animate-in fade-in duration-150 ease-smooth")}>
-      <CollapsibleTrigger className="group/row flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-accent/50">
+      <CollapsibleTrigger className="group/row flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-accent/60">
         <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]/row:rotate-90" />
         <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
         {/* 状态靠文字表达：进行中有微光扫过，完成后变成次要灰，只有被拒绝或出错才出现颜色 */}
@@ -196,8 +202,8 @@ function ToolCallRow({
         {result && (denied || result.isError) && <X className="ml-auto h-3.5 w-3.5 shrink-0 text-destructive" />}
       </CollapsibleTrigger>
 
-      {/* 模型自述：标签用专用颜色明确标注，内容用次要灰，和工具名左对齐；始终可见 */}
-      <div className="pr-2 pb-1 pl-[54px] text-sm text-muted-foreground" title={t.source.model}>
+      {/* 模型自述：左侧紫色虚线 + 专用颜色的标签，内容用次要灰，和工具名左对齐；始终可见 */}
+      <div className="mr-2 mb-1 ml-[44px] border-l-2 border-dashed border-self-report/50 pl-2 text-sm text-muted-foreground" title={t.source.model}>
         <span className="font-medium text-self-report">{t.modelSays}</span>{" "}
         {typeof args.intent === "string" ? args.intent : t.intentMissing}
         {typeof args.step === "number" && args.step > 0 && <span> {t.stepTag(args.step)}</span>}
