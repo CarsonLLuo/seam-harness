@@ -99,8 +99,9 @@ export function Turn({
         </div>
 
         {text ? (
-          // 模型写的文字（包括最终回答）都是模型自述：左侧紫色虚线 + 小标签
-          <div title={t.source.model} className="border-l-2 border-dashed border-self-report/60 pl-3">
+          // 模型写的文字（包括最终回答）都是模型自述，用一个小标签标出来。
+          // 紫色虚线只留给工具调用里的「模型说」：那里自述和 harness 事实挨在一起，才需要区分
+          <div title={t.source.model}>
             <div className="text-xs font-medium text-self-report">{t.source.model}</div>
             <MarkdownText text={text} />
           </div>
