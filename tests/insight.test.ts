@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SeamEvent } from "../src/events";
-import { coverageAtRun, listRuns, readCoverage, taskMap } from "../src/insight";
+import { coverageAtRun, listRuns, readCoverage, readRuns, taskMap } from "../src/insight";
 import { readLog } from "../src/log";
 import { runSession } from "../src/session";
 import { startMockAnthropic } from "./mock-anthropic";
@@ -184,4 +184,7 @@ test("coverage by run: cumulative up to the run, plus what that run read", () =>
   const third = coverageAtRun(events, 3);
   expect(Object.keys(third.total.files).sort()).toEqual(["a.txt", "b.txt"]);
   expect(third.current.files).toEqual({});
+
+  // 每个文件被哪几次运行读过
+  expect(readRuns(events)).toEqual({ "a.txt": [1, 2], "b.txt": [2] });
 });

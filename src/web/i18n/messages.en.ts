@@ -176,6 +176,12 @@ export const en = {
     title: "Reading",
     run: (n: number) => `Message ${n}`,
     summary: (fresh: number, read: number, total: number) => `Read ${fresh} files this time; ${read} of ${total} so far`,
+    summaryNone: (read: number, total: number) => `Read no files this time; ${read} of ${total} so far`,
+    runTip: (read: number, first: number) =>
+      read === 0 ? "Read no files" : `Read ${read} file${read === 1 ? "" : "s"}` + (first < read ? `, ${first} for the first time` : ""),
+    root: "Workspace",
+    unreadFiles: (n: number) => `${n} unread files`,
+    legend: { fresh: "Read this time", seen: "Read before", unseen: "Not read", runs: "Numbers on the right are the messages that read it" },
     thisRun: (detail: string) => `this time: ${detail}`,
     basis: "Counts only what the agent actually read with read_file.",
     full: (total: number) => `all ${total} lines`,

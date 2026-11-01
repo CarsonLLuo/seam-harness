@@ -204,3 +204,13 @@ export function coverageAtRun(events: SeamEvent[], run: number): { total: ReadCo
   const end = starts[run] ?? events.length;
   return { total: readCoverage(events.slice(0, end)), current: readCoverage(events.slice(start, end)) };
 }
+
+/** 每个文件在第几次运行里被读过（从 1 开始，升序）；第一条用户消息之前的读取不归入任何一次 */
+export function readRuns(events: SeamEvent[]): Record<string, number[]> {
+  const starts = events.flatMap((e, i) => (e.type === "user_message" ? [i] : []));
+  const out: Record<string, number[]> = {};
+  starts.forEach((start, i) => {
+    for (const path of Object.keys(readCoverage(events.slice(start, starts[i + 1] ?? events.length)).files)) (out[path] ??= []).push(i + 1);
+  });
+  return out;
+}
