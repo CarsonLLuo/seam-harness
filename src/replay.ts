@@ -11,6 +11,8 @@ export interface ReplayTurn {
   turn: number;
   /** 这一轮开头的用户消息（第一轮是任务，之后是追问）；模型接着工具结果继续时没有 */
   user?: EventPayloads["user_message"];
+  /** 用户在发这条消息前放进工作区的文件 */
+  filesAdded?: EventPayloads["files_added"]["files"];
   /** 本轮真实发出的请求；遇到重试时可能有多次 */
   requests: EventPayloads["http_request"][];
   assistant?: EventPayloads["assistant_message"];
@@ -31,6 +33,8 @@ export function reconstruct(events: SeamEvent[]): ReplaySession {
   const session: ReplaySession = { sessionId: events[0]?.sessionId ?? "", userMessages: [], turns: [] };
   const turns = new Map<number, ReplayTurn>();
   const calls = new Map<string, ReplayToolCall>();
+  // files_added 记在 user_message 之前，挂到紧接着的那条用户消息所在的轮次
+  let pendingFiles: EventPayloads["files_added"]["files"] | undefined;
   const turnOf = (n: number) => {
     let t = turns.get(n);
     if (!t) {
@@ -46,10 +50,17 @@ export function reconstruct(events: SeamEvent[]): ReplaySession {
       case "session_start":
         session.start = e.data;
         break;
-      case "user_message":
-        session.userMessages.push(e.data);
-        turnOf(e.turn).user = e.data;
+      case "files_added":
+        pendingFiles = [...(pendingFiles ?? []), ...e.data.files];
         break;
+      case "user_message": {
+        session.userMessages.push(e.data);
+        const t = turnOf(e.turn);
+        t.user = e.data;
+        if (pendingFiles) t.filesAdded = pendingFiles;
+        pendingFiles = undefined;
+        break;
+      }
       case "turn_start":
         turnOf(e.turn);
         break;
@@ -117,6 +128,8 @@ export function formatEvent(e: SeamEvent, opts: { raw?: boolean } = {}): string 
         `  task:      ${e.data.task}`,
       ].join("\n");
     }
+    case "files_added":
+      return e.data.files.map((f) => `  + user added ${f.path} (${f.bytes} bytes)`).join("\n");
     case "turn_start":
       return `\n── Turn ${e.turn} ──`;
     case "http_request": {

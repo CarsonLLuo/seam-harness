@@ -6,6 +6,7 @@ import {
   Loader2,
   Search,
   SquareTerminal,
+  User,
   Wrench,
   X,
   type LucideIcon,
@@ -14,7 +15,8 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { KEY_ARG } from "../../insight";
 import type { ReplayToolCall, ReplayTurn } from "../../replay";
-import type { ApprovalRequest } from "../api";
+import type { AddedFiles, ApprovalRequest } from "../api";
+import { splitMentions } from "../file-mention";
 import { useI18n } from "../i18n/i18n";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
@@ -37,10 +39,39 @@ function textOf(content: unknown[] | undefined): string {
     .trim();
 }
 
+/** 消息里的 @path 用等宽字和浅底标出来；只是显示，不展开文件内容 */
 export function UserMessage({ text }: { text: string }) {
   return (
     <div className="flex justify-end">
-      <div className="max-w-[78%] rounded-[20px] bg-secondary px-4 py-2.5 text-[15px] leading-[1.6] whitespace-pre-wrap">{text}</div>
+      <div className="max-w-[78%] rounded-[20px] bg-secondary px-4 py-2.5 text-[15px] leading-[1.6] whitespace-pre-wrap">
+        {splitMentions(text).map((p, i) =>
+          p.mention ? (
+            <span key={i} className="rounded-[5px] bg-foreground/[0.07] px-1 py-px font-mono text-[0.86em] break-all">
+              {p.text}
+            </span>
+          ) : (
+            p.text
+          ),
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** harness 事实：这些文件是用户自己放进工作区的，不是 agent 写的 */
+function FilesAdded({ files }: { files: AddedFiles }) {
+  const { t } = useI18n();
+  const dirs = new Set(files.map((f) => f.path.slice(0, f.path.lastIndexOf("/") + 1)));
+  // 拖进来的文件都在 uploads/，按设计稿只写一次目录；万一不在同一个目录就写完整路径
+  const [dir] = dirs;
+  const text =
+    dirs.size === 1 && dir
+      ? t.files.added(files.length, dir, files.map((f) => f.path.slice(dir.length)).join(t.listSeparator))
+      : t.files.added(files.length, t.files.workspace, files.map((f) => f.path).join(t.listSeparator));
+  return (
+    <div className="flex items-start justify-end gap-2 text-[13.5px] text-muted-foreground">
+      <User className="mt-[3px] size-4 shrink-0" />
+      <span>{text}</span>
     </div>
   );
 }
@@ -81,6 +112,7 @@ export function Turn({
 
   return (
     <div className={cn("space-y-3", animate && "animate-in fade-in slide-in-from-bottom-1 duration-150 ease-smooth")}>
+      {turn.filesAdded && turn.filesAdded.length > 0 && <FilesAdded files={turn.filesAdded} />}
       {userText && <UserMessage text={userText} />}
 
       <div className="group/turn">

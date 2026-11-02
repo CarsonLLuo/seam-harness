@@ -5,7 +5,7 @@ import type { Api, Model } from "@earendil-works/pi-ai";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { PiEventConverter, type SeamEvent } from "./events";
+import { PiEventConverter, type EventPayloads, type SeamEvent } from "./events";
 import { readLog } from "./log";
 import { EventLog } from "./log";
 import { models } from "./models";
@@ -61,6 +61,8 @@ export interface SessionOptions {
   maxTurns?: number;
   /** 系统提示词的语言，也是 intent 和最终回答使用的语言。默认 en */
   lang?: Lang;
+  /** 用户在第一条消息前放进工作区的文件（见 uploads.ts） */
+  files?: AddedFiles;
   /** 每写入一条事件就回调一次，用于实时显示 */
   onEvent?: (event: SeamEvent) => void;
   /** 模型输出文字的流式增量。只用于实时显示，不写进日志 */
@@ -68,11 +70,13 @@ export interface SessionOptions {
 }
 
 /** 已打开的会话 */
+export type AddedFiles = EventPayloads["files_added"]["files"];
+
 export interface Session {
   sessionId: string;
   logPath: string;
-  /** 发一条消息并运行到结束。运行中再调用会抛错 */
-  send: (text: string) => Promise<SessionResult>;
+  /** 发一条消息并运行到结束；files 是用户这次放进工作区的文件。运行中再调用会抛错 */
+  send: (text: string, files?: AddedFiles) => Promise<SessionResult>;
   abort: () => void;
   isRunning: () => boolean;
 }
@@ -83,7 +87,7 @@ export interface SessionHandle extends Session {
 }
 
 /** 恢复会话时需要重新提供的运行参数；工作区、系统提示词和模型名都从日志里读取 */
-export type ResumeOptions = Omit<SessionOptions, "task" | "workspace" | "logDir">;
+export type ResumeOptions = Omit<SessionOptions, "task" | "workspace" | "logDir" | "files">;
 
 export interface SessionResult {
   sessionId: string;
@@ -128,6 +132,7 @@ function systemPrompt(workspace: string, lang: Lang, note?: WorkspaceNote): stri
           "你是一个在用户本地工作区里工作的 agent。",
           `工作区根目录是 ${workspace}。你只能通过工具查看和修改这个目录里的文件。`,
           "你只知道自己实际读过的内容。不要声称看过没有读过的文件。",
+          "用户消息里的 `@路径` 指工作区里的文件（相对工作区根目录）。消息里只有路径，没有内容；需要时用 `read_file` 读取。",
           "每次调用工具都必须填写 `intent`：用一句简短的话告诉用户你为什么要这样调用。",
           "除 `propose_plan` 外，每次调用工具都必须填写 `step`：这次调用属于已批准计划的第几步（从 1 开始）；还没有计划或不在计划里时填 0。",
           "在第一次写文件或执行命令之前，必须先调用 `propose_plan` 提出计划，等用户批准。读取文件不需要计划。",
@@ -139,6 +144,7 @@ function systemPrompt(workspace: string, lang: Lang, note?: WorkspaceNote): stri
           "You are an agent working inside a local workspace for a user.",
           `The workspace root is ${workspace}. You can only see and change files there, and only through your tools.`,
           "You only know what you have actually read. Do not claim to have looked at files you have not read.",
+          "An `@path` in the user's message refers to a file in the workspace (relative to the root). The message holds only the path, not the content; use `read_file` when you need it.",
           "Every tool call must include `intent`: one short sentence telling the user why you are making this call.",
           "Every tool call except `propose_plan` must include `step`: the step of the approved plan it belongs to (1-based), or 0 if there is no plan yet or it is not part of the plan.",
           "Before the first write or command, call `propose_plan` and wait for the user's approval. Reading files does not need a plan.",
@@ -214,7 +220,7 @@ export function startSession(opts: SessionOptions): SessionHandle {
   });
 
   const session = buildSession({ ...opts, log, workspace, systemPrompt: prompt, messages: [] });
-  return { ...session, done: session.send(opts.task) };
+  return { ...session, done: session.send(opts.task, opts.files) };
 }
 
 /** 从日志恢复会话（比如服务重启之后），之后可以继续发消息 */
@@ -447,9 +453,10 @@ function buildSession(
     }
   });
 
-  async function send(text: string): Promise<SessionResult> {
+  async function send(text: string, files?: AddedFiles): Promise<SessionResult> {
     if (running) throw new Error("The session is already running.");
     running = true;
+    if (files?.length) log.record("files_added", "user", { files });
     runStartTurn = log.turn;
     hitMaxTurns = false;
     stopRequested = false;

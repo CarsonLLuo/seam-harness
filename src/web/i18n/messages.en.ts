@@ -96,6 +96,33 @@ export const en = {
   tokens: (input: number, output: number) => `${input} tokens in, ${output} out`,
   runEnded: (status: string, seconds: string) => `${status}, ${seconds} s`,
 
+  /** 输入框里的 @ 补全，以及拖进对话区的文件 */
+  files: {
+    header: "Workspace files",
+    keySelect: "select",
+    keyInsert: "insert",
+    keyClose: "close",
+    read: "Read",
+    readHint: "The agent has read this file in this session",
+    loading: "Loading files…",
+    empty: "The workspace has no files yet",
+    listFailed: "Could not list the workspace files:",
+    none: (q: string) => `No file in the workspace matches “${q}”`,
+    more: (n: number) => `${n} more matching files. Keep typing to narrow it down.`,
+    dropTitle: "Drop to copy into the workspace’s",
+    dropHint: "The original files are not moved. Only text files up to 1 MB.",
+    renamed: (original: string, saved: string) => `${original} already exists, renamed to ${saved}`,
+    tooLarge: (size: string) => `${size}, over the 1 MB limit`,
+    notText: "Not a text file. Only text files are supported for now",
+    folder: "Folders are not supported",
+    failed: "Could not copy the files:",
+    close: "Close",
+    /** 用户消息上方的事实行 */
+    added: (n: number, dir: string, names: string) => `You added ${n === 1 ? "1 file" : `${n} files`} to ${dir}: ${names}`,
+    workspace: "the workspace",
+  },
+
+  listSeparator: ", ",
   modelSays: "The model says:",
   intentMissing: "(the model gave no reason)",
   stepTag: (n: number) => `(plan step ${n})`,

@@ -11,6 +11,7 @@ import type { SeamEvent } from "../events";
 import { readLog } from "../log";
 import type { ProviderName } from "../models";
 import { listWorkspaceFiles } from "../tools";
+import { checkAddedFiles, saveUploads } from "../uploads";
 import {
   resumeSession,
   startSession,
@@ -293,6 +294,33 @@ export function createServer(opts: ServerOptions) {
     return json(await listWorkspaceFiles(ws, MAX_LISTED_FILES));
   }
 
+  const isFolder = (p: string | undefined | null): p is string => Boolean(p) && existsSync(p!) && statSync(p!).isDirectory();
+
+  /** 按工作区路径列文件：新会话页还没有会话，输入框里的 @ 补全用这个 */
+  async function filesIn(req: Request): Promise<Response> {
+    const ws = new URL(req.url).searchParams.get("workspace");
+    if (!isFolder(ws)) return fail(400, "Workspace is not a folder.");
+    return json(await listWorkspaceFiles(ws, MAX_LISTED_FILES));
+  }
+
+  /** 拖进对话区的文件：复制到工作区的 uploads/。日志在发送消息时才写（files_added） */
+  async function upload(req: Request): Promise<Response> {
+    const form = await req.formData().catch(() => undefined);
+    const ws = form?.get("workspace");
+    if (typeof ws !== "string" || !isFolder(ws)) return fail(400, "Workspace is not a folder.");
+    const files = await Promise.all(
+      (form!.getAll("files").filter((f) => f instanceof File) as File[]).map(async (f) => ({
+        name: f.name,
+        data: new Uint8Array(await f.arrayBuffer()),
+      })),
+    );
+    try {
+      return json(saveUploads(ws, files));
+    } catch (err) {
+      return fail(500, (err as Error).message);
+    }
+  }
+
   async function pickFolder(req: Request): Promise<Response> {
     if (!opts.pickFolder) return fail(501, "Choosing a folder is not available here.");
     const body = (await req.json().catch(() => ({}))) as { lang?: Lang; current?: string };
@@ -311,6 +339,7 @@ export function createServer(opts: ServerOptions) {
       model?: string;
       workspace?: string;
       lang?: Lang;
+      files?: unknown;
     };
     const task = body.task?.trim();
     if (!task) return fail(400, "Task is empty.");
@@ -332,6 +361,7 @@ export function createServer(opts: ServerOptions) {
       workspace,
       ...resolved,
       lang,
+      files: checkAddedFiles(workspace, body.files),
       logDir: opts.logDir,
       approve: webApprover(entry),
       ...liveCallbacks(entry),
@@ -346,14 +376,14 @@ export function createServer(opts: ServerOptions) {
     const entry = entryOf(id);
     if (!entry) return fail(404, "Session not found.");
     if (entry.session?.isRunning()) return fail(409, "The session is still running.");
-    const body = (await req.json().catch(() => ({}))) as { text?: string };
+    const body = (await req.json().catch(() => ({}))) as { text?: string; files?: unknown };
     const text = body.text?.trim();
     if (!text) return fail(400, "Message is empty.");
+    const start = entry.events.find((e) => e.type === "session_start");
+    if (start?.type !== "session_start") return fail(400, "The log has no session_start event.");
 
     if (!entry.session) {
       // 服务重启后第一次追问：从日志恢复对话历史
-      const start = entry.events.find((e) => e.type === "session_start");
-      if (start?.type !== "session_start") return fail(400, "The log has no session_start event.");
       let resolved;
       try {
         resolved = opts.resolveModel(start.data.model.provider as ProviderName, start.data.model.id);
@@ -368,7 +398,8 @@ export function createServer(opts: ServerOptions) {
         ...liveCallbacks(entry),
       });
     }
-    track(entry, entry.session.send(text));
+    const files = existsSync(start.data.workspace) ? checkAddedFiles(start.data.workspace, body.files) : [];
+    track(entry, entry.session.send(text, files));
     return json({ ok: true });
   }
 
@@ -481,6 +512,8 @@ export function createServer(opts: ServerOptions) {
       },
       "/api/workspaces": { GET: api(() => json(recentWorkspaces())) },
       "/api/pick-folder": { POST: api(pickFolder) },
+      "/api/workspace-files": { GET: api(filesIn) },
+      "/api/uploads": { POST: api(upload) },
       "/api/sessions": {
         GET: api(() => json(listSessions())),
         POST: api(createSession),

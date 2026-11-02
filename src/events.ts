@@ -25,6 +25,8 @@ export interface EventPayloads {
     /** 工作区根目录的说明文件（SEAM.md），由 harness 读取并放进系统提示词 */
     workspaceNote?: { path: string; content: string; truncated: boolean };
   };
+  /** 用户在发这条消息前放进工作区的文件（拖进对话区，复制到 uploads/）。记在 user_message 之前 */
+  files_added: { files: { path: string; /** 原始文件名 */ name: string; bytes: number }[] };
   user_message: { content: unknown };
   turn_start: Record<string, never>;
   /** 真实发出的 HTTP 请求，鉴权相关的请求头已去掉 */

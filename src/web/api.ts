@@ -1,9 +1,10 @@
 // 前端调用本地服务的接口。令牌在 HttpOnly Cookie 里，同源请求会自动带上。
 import type { ProviderInfo, SessionSummary, StreamMessage } from "../server/server";
-import type { ApprovalRequest } from "../session";
+import type { AddedFiles, ApprovalRequest } from "../session";
+import type { UploadResult } from "../uploads";
 import type { Lang } from "./i18n/i18n";
 
-export type { ApprovalRequest, ProviderInfo, SessionSummary, StreamMessage };
+export type { AddedFiles, ApprovalRequest, ProviderInfo, SessionSummary, StreamMessage, UploadResult };
 
 /** 用户对挂起请求的决定 */
 export interface ApprovalDecision {
@@ -54,10 +55,24 @@ export const pickFolder = async (input: { lang: Lang; current: string }) => {
   return res.path ?? null;
 };
 
-export const startTask = (input: { task: string; provider: string; model: string; workspace: string; lang: Lang }) =>
+/** files：用户这次放进工作区的文件，服务端核对后记进日志 */
+export const startTask = (input: { task: string; provider: string; model: string; workspace: string; lang: Lang; files?: AddedFiles }) =>
   post<{ sessionId: string }>("/api/sessions", input);
 
-export const sendMessage = (id: string, text: string) => post<{ ok: true }>(`/api/sessions/${id}/messages`, { text });
+export const sendMessage = (id: string, text: string, files?: AddedFiles) =>
+  post<{ ok: true }>(`/api/sessions/${id}/messages`, { text, files });
+
+/** 按工作区路径列文件（相对路径），给输入框的 @ 补全用 */
+export const listWorkspaceFiles = (workspace: string) =>
+  request<{ files: string[]; truncated: boolean }>(`/api/workspace-files?workspace=${encodeURIComponent(workspace)}`);
+
+/** 把文件复制到工作区的 uploads/ */
+export const uploadFiles = (workspace: string, files: File[]) => {
+  const form = new FormData();
+  form.append("workspace", workspace);
+  files.forEach((f) => form.append("files", f));
+  return request<UploadResult>("/api/uploads", { method: "POST", body: form });
+};
 
 /** 删除会话：服务端把日志移到回收站，30 天后彻底删除 */
 export const deleteSession = (id: string) => request<{ ok: true }>(`/api/sessions/${id}`, { method: "DELETE" });
