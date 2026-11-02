@@ -150,7 +150,8 @@ export function CoveragePanel({ sessionId, events }: { sessionId: string; events
     <div className="p-4">
       {runs.length > 0 && (
         <>
-          <div className="-mx-1 flex gap-0.5 overflow-x-auto">
+          {/* 次数做成圆形数字：选中的实心，有读取的浅底，没读文件的虚线圈 */}
+          <div className="flex gap-1 overflow-x-auto">
             {runs.map((r) => {
               const n = perRun[r.index - 1]!;
               const on = r.index === run;
@@ -161,12 +162,15 @@ export function CoveragePanel({ sessionId, events }: { sessionId: string; events
                       onClick={() => setPicked(r.index === runs.length ? null : r.index)}
                       aria-label={t.coverage.run(r.index)}
                       className={cn(
-                        "flex min-w-7 shrink-0 flex-col items-center gap-1 rounded-md px-1.5 py-1 text-xs tabular-nums",
-                        on ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60",
+                        "flex size-6 shrink-0 items-center justify-center rounded-full text-xs tabular-nums transition-colors",
+                        on
+                          ? "bg-foreground text-background"
+                          : n.read
+                            ? "bg-accent text-foreground hover:bg-accent/70"
+                            : "border border-dashed border-muted-foreground/40 text-muted-foreground hover:bg-accent/60",
                       )}
                     >
                       {r.index}
-                      <span className={cn("size-1.5 rounded-full", n.read ? (on ? "bg-foreground" : "bg-muted-foreground") : "border border-muted-foreground/60")} />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
