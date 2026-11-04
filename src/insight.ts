@@ -133,6 +133,8 @@ export interface FileCoverage {
   total: number;
   /** 全部行都读过（空文件读一次即算） */
   full: boolean;
+  /** PDF 按页读取：ranges 和 total 数的是页 */
+  unit?: "page";
 }
 
 export interface ReadCoverage {
@@ -160,12 +162,12 @@ export function readCoverage(events: SeamEvent[]): ReadCoverage {
   for (const e of events) {
     if (e.type === "session_start" && e.data.workspaceNote) injected = e.data.workspaceNote.path;
     if (e.type !== "tool_result" || e.data.name !== "read_file" || e.data.isError) continue;
-    const d = e.data.details as { path?: unknown; from?: unknown; to?: unknown; total?: unknown } | undefined;
+    const d = e.data.details as { path?: unknown; from?: unknown; to?: unknown; total?: unknown; unit?: unknown } | undefined;
     if (typeof d?.path !== "string" || typeof d.from !== "number" || typeof d.to !== "number" || typeof d.total !== "number") continue;
     const prev = files[d.path];
     const ranges = merge(d.to >= d.from ? [...(prev?.ranges ?? []), [d.from, d.to]] : (prev?.ranges ?? []));
     const full = d.total === 0 || (ranges.length > 0 && ranges[0]![0] <= 1 && ranges[0]![1] >= d.total);
-    files[d.path] = { ranges, total: d.total, full };
+    files[d.path] = { ranges, total: d.total, full, ...(d.unit === "page" ? { unit: "page" as const } : {}) };
   }
   return { files, injected };
 }

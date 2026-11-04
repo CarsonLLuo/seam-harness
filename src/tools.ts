@@ -4,6 +4,7 @@ import { Type } from "@earendil-works/pi-ai";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
+import { docKind, docxLines, MAX_DOC_BYTES, pdfPages } from "./documents";
 
 /** 需要用户确认才能执行的工具；其余工具自动放行 */
 export const TOOLS_NEEDING_APPROVAL = new Set(["write_file", "run_command"]);
@@ -15,6 +16,8 @@ export const PATH_ARG: Record<string, string> = { read_file: "path", write_file:
 export const PLAN_TOOL_NAME = "propose_plan";
 
 const READ_LIMIT = 400; // read_file 默认一次最多读取的行数
+const PDF_PAGE_LIMIT = 5; // PDF 默认一次最多读取的页数
+const DOC_CHAR_LIMIT = 40_000; // PDF 和 Word 一次最多返回的字数（至少一页或一行），Word 一段就是一行，可能很长
 const MAX_FILE_BYTES = 1_000_000;
 const MAX_SEARCH_MATCHES = 200;
 const COMMAND_TIMEOUT_MS = 60_000;
@@ -200,31 +203,68 @@ export function createTools(workspace: string): AgentTool<any>[] {
   const root = realpathSync(workspace);
   const rel = (abs: string) => relative(root, abs) || ".";
 
+  /** 按行读取：文本文件和 Word 共用。maxChars 只对 Word 生效，文本文件靠 1 MB 上限 */
+  function readLines(path: string, lines: string[], offset: number, limit: number, maxChars = Infinity) {
+    const total = lines.length;
+    const from = Math.min(offset, total + 1);
+    let to = Math.min(from + limit - 1, total);
+    for (let i = from, chars = 0; i <= to; i++) {
+      chars += lines[i - 1]!.length;
+      if (chars > maxChars && i > from) to = i - 1;
+    }
+    const body = lines.slice(from - 1, to).map((l, i) => `${from + i}| ${l}`).join("\n");
+    const header = total === 0 ? `${path} is empty.` : `${path} (lines ${from}-${to} of ${total})`;
+    return { content: text(`${header}\n${body}`), details: { path, from, to, total } };
+  }
+
+  function readPages(path: string, pages: string[], offset: number, limit: number) {
+    const total = pages.length;
+    const from = Math.min(offset, total + 1);
+    let to = Math.min(from + limit - 1, total);
+    for (let i = from, chars = 0; i <= to; i++) {
+      chars += pages[i - 1]!.length;
+      if (chars > DOC_CHAR_LIMIT && i > from) to = i - 1;
+    }
+    const body = pages
+      .slice(from - 1, to)
+      .map((p, i) => `--- page ${from + i} ---\n${p.trim() || "(no text on this page)"}`)
+      .join("\n");
+    return { content: text(`${path} (pages ${from}-${to} of ${total})\n${body}`), details: { path, from, to, total, unit: "page" } };
+  }
+
   const readFileTool: AgentTool<any> = {
     name: "read_file",
     label: "Read file",
     description:
-      `Read a text file in the workspace. Returns numbered lines, at most ${READ_LIMIT} at a time; ` +
-      "use offset to read further. You only know what you have actually read.",
+      "Read a text, PDF, or Word (.docx) file in the workspace. " +
+      `Text and Word files return numbered lines, at most ${READ_LIMIT} at a time; ` +
+      `PDFs return their text page by page, at most ${PDF_PAGE_LIMIT} pages at a time. ` +
+      "Use offset to read further (for PDFs, offset and limit count pages). Scanned PDFs without a text layer cannot be read. " +
+      "You only know what you have actually read.",
     parameters: Type.Object({
       path: Type.String({ description: "Path relative to the workspace root." }),
-      offset: Type.Optional(Type.Integer({ minimum: 1, description: "First line to read (1-based). Default 1." })),
-      limit: Type.Optional(Type.Integer({ minimum: 1, description: `Number of lines. Default ${READ_LIMIT}.` })),
+      offset: Type.Optional(Type.Integer({ minimum: 1, description: "First line (or PDF page) to read (1-based). Default 1." })),
+      limit: Type.Optional(
+        Type.Integer({ minimum: 1, description: `Number of lines (or PDF pages). Default ${READ_LIMIT} lines or ${PDF_PAGE_LIMIT} pages.` }),
+      ),
       intent,
       step,
     }),
     async execute(_id, params) {
-      const { path, offset = 1, limit = READ_LIMIT } = params as { path: string; offset?: number; limit?: number };
+      const { path, offset = 1, limit } = params as { path: string; offset?: number; limit?: number };
       const abs = resolveInWorkspace(root, path);
-      if ((await stat(abs)).size > MAX_FILE_BYTES) throw new Error(`File "${path}" is larger than 1 MB.`);
+      const size = (await stat(abs)).size;
+      const kind = docKind(abs);
+      if (kind) {
+        if (size > MAX_DOC_BYTES) throw new Error(`File "${path}" is larger than 20 MB.`);
+        const data = new Uint8Array(await readFile(abs));
+        if (kind === "pdf") return readPages(rel(abs), await pdfPages(data, path), offset, limit ?? PDF_PAGE_LIMIT);
+        return readLines(rel(abs), await docxLines(data, path), offset, limit ?? READ_LIMIT, DOC_CHAR_LIMIT);
+      }
+      if (size > MAX_FILE_BYTES) throw new Error(`File "${path}" is larger than 1 MB.`);
       const lines = (await readFile(abs, "utf8")).split("\n");
       if (lines.at(-1) === "") lines.pop();
-      const total = lines.length;
-      const from = Math.min(offset, total + 1);
-      const to = Math.min(from + limit - 1, total);
-      const body = lines.slice(from - 1, to).map((l, i) => `${from + i}| ${l}`).join("\n");
-      const header = total === 0 ? `${rel(abs)} is empty.` : `${rel(abs)} (lines ${from}-${to} of ${total})`;
-      return { content: text(`${header}\n${body}`), details: { path: rel(abs), from, to, total } };
+      return readLines(rel(abs), lines, offset, limit ?? READ_LIMIT);
     },
   };
 
@@ -256,7 +296,7 @@ export function createTools(workspace: string): AgentTool<any>[] {
     name: "search",
     label: "Search",
     description:
-      "Search text files in the workspace with a JavaScript regular expression. " +
+      "Search text files in the workspace with a JavaScript regular expression (PDF and Word files are not searched; use read_file). " +
       `Returns matching lines as path:line: text, at most ${MAX_SEARCH_MATCHES} matches. Skips .git and node_modules.`,
     parameters: Type.Object({
       pattern: Type.String({ description: "JavaScript regular expression, e.g. 'export function \\w+'." }),
@@ -271,7 +311,7 @@ export function createTools(workspace: string): AgentTool<any>[] {
       const matches: string[] = [];
       let filesScanned = 0;
       for await (const file of walk(dir)) {
-        if ((await stat(file)).size > MAX_FILE_BYTES) continue;
+        if (docKind(file) || (await stat(file)).size > MAX_FILE_BYTES) continue; // PDF 和 Word 不参与搜索
         const content = await readFile(file, "utf8");
         if (content.includes("\0")) continue; // 跳过二进制文件
         filesScanned++;

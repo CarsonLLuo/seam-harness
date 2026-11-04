@@ -350,7 +350,8 @@ function TreeRow({
   const injected = row.path === cov.total.injected;
   // 这次读到的文件显示这次读了哪些行，之前读过的显示累计；放在悬停提示里，行内只放次数
   const shown = fresh ?? read;
-  const detail = shown ? (shown.full ? t.coverage.full(shown.total) : t.coverage.partial(shown.ranges, shown.total)) : undefined;
+  const pages = shown?.unit === "page";
+  const detail = shown ? (shown.full ? t.coverage.full(shown.total, pages) : t.coverage.partial(shown.ranges, shown.total, pages)) : undefined;
   return (
     <li className={base} style={{ paddingLeft: indent }} title={detail ? `${row.path}\n${fresh ? t.coverage.thisRun(detail) : detail}` : row.path}>
       <span className={cn(name, injected && "text-muted-foreground")}>{row.path.split("/").at(-1)}</span>

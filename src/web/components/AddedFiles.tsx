@@ -4,7 +4,8 @@ import { uploadFiles, type AddedFiles } from "../api";
 import { useI18n } from "../i18n/i18n";
 import { IconButton } from "./IconButton";
 
-const MAX_BYTES = 1024 * 1024; // 和服务端的 MAX_UPLOAD_BYTES 一致；超过的不上传，直接提示
+// 和服务端的 MAX_UPLOAD_BYTES / MAX_DOC_BYTES 一致；超过的不上传，直接提示
+const limitOf = (name: string) => (/\.(pdf|docx)$/i.test(name) ? 20 : 1) * 1024 * 1024;
 const NOTICE_MS = 4000;
 
 type NoticeRow = { ok: true; path: string; clashedWith?: string } | { ok: false; name: string; why: string };
@@ -30,14 +31,15 @@ export function useAddedFiles(workspace: string | undefined, insert: (text: stri
   async function drop(files: File[], folders: string[]) {
     if (!workspace) return;
     const rows: NoticeRow[] = folders.map((name) => ({ ok: false, name, why: t.files.folder }));
-    const small = files.filter((f) => f.size <= MAX_BYTES);
-    for (const f of files) if (f.size > MAX_BYTES) rows.push({ ok: false, name: f.name, why: t.files.tooLarge(mb(f.size)) });
+    const tooLarge = (name: string, bytes: number) => t.files.tooLarge(mb(bytes), `${limitOf(name) / 1024 / 1024} MB`);
+    const small = files.filter((f) => f.size <= limitOf(f.name));
+    for (const f of files) if (f.size > limitOf(f.name)) rows.push({ ok: false, name: f.name, why: tooLarge(f.name, f.size) });
     if (small.length > 0) {
       try {
         const res = await uploadFiles(workspace, small);
         const ok = res.added.map((a) => ({ ok: true as const, path: a.path, clashedWith: a.clashedWith }));
         rows.unshift(...ok);
-        for (const r of res.rejected) rows.push({ ok: false, name: r.name, why: r.code === "too_large" ? t.files.tooLarge(mb(r.bytes)) : t.files.notText });
+        for (const r of res.rejected) rows.push({ ok: false, name: r.name, why: r.code === "too_large" ? tooLarge(r.name, r.bytes) : t.files.notText });
         setAdded((prev) => [...prev, ...res.added.map(({ path, name, bytes }) => ({ path, name, bytes }))]);
         if (ok.length > 0) insert(ok.map((r) => `@${r.path}`).join(" "));
       } catch (err) {

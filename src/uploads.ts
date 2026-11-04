@@ -1,7 +1,8 @@
-// 用户自己把文件放进工作区：拖进对话区的文件复制到 uploads/。
+// 用户自己把文件放进工作区：拖进对话区的文件复制到 uploads/。只收文本、PDF 和 Word（.docx）。
 // 这是用户的操作，不经过权限确认；发送消息时记一条 files_added（source: user），说明文件是谁放进来的。
 import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { extname, join, relative } from "node:path";
+import { docKind, looksLike, MAX_DOC_BYTES } from "./documents";
 import type { EventPayloads } from "./events";
 import { resolveInWorkspace } from "./tools";
 
@@ -50,11 +51,13 @@ export function saveUploads(workspace: string, files: { name: string; data: Uint
   const result: UploadResult = { added: [], rejected: [] };
   for (const f of files) {
     const bytes = f.data.byteLength;
-    if (bytes > MAX_UPLOAD_BYTES) {
+    // 只收文本、PDF 和 Word；PDF / Word 按扩展名认，再看文件头，提取留给 read_file
+    const kind = docKind(f.name);
+    if (bytes > (kind ? MAX_DOC_BYTES : MAX_UPLOAD_BYTES)) {
       result.rejected.push({ name: f.name, bytes, code: "too_large" });
       continue;
     }
-    if (!isText(f.data)) {
+    if (kind ? !looksLike(kind, f.data) : !isText(f.data)) {
       result.rejected.push({ name: f.name, bytes, code: "not_text" });
       continue;
     }

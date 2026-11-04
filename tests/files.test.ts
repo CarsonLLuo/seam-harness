@@ -35,15 +35,15 @@ describe("copying files into uploads/", () => {
 
   test("binary and oversized files are rejected and not written", () => {
     const res = saveUploads(ws, [
-      { name: "report.pdf", data: new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x00, 0xff]) },
+      { name: "photo.png", data: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff]) },
       { name: "big.txt", data: new Uint8Array(MAX_UPLOAD_BYTES + 1).fill(0x61) },
     ]);
     expect(res.added).toEqual([]);
     expect(res.rejected.map((r) => [r.name, r.code])).toEqual([
-      ["report.pdf", "not_text"],
+      ["photo.png", "not_text"],
       ["big.txt", "too_large"],
     ]);
-    expect(existsSync(join(ws, "uploads/report.pdf"))).toBe(false);
+    expect(existsSync(join(ws, "uploads/photo.png"))).toBe(false);
   });
 
   test("files the browser says were added are checked against the workspace", () => {
